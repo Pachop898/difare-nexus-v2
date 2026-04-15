@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secretos
+.env
+*.env.local
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+desktop.ini
+Thumbs.db
+
+# Logs
+*.log
+
+# Reportes generados
+reportes/
+*.pdf.tmp
+
+# Notas locales
+.notas/
