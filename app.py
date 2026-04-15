@@ -190,6 +190,12 @@ def debug_db():
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Liviano: sólo confirma que el worker responde. No toca la BD para no
+    # reventar el healthcheck durante el cold start de Railway.
+    return jsonify({"status": "ok"}), 200
+
+@app.route("/health/db", methods=["GET"])
+def health_db():
     try:
         ventas = query_val("SELECT COUNT(*) FROM ventas")
         sap = query_val("SELECT COUNT(*) FROM sap")
