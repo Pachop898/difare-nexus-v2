@@ -406,7 +406,7 @@ def detalle_pos():
 
     # Tendencia mensual (ventas Ene/Feb + sap Mar)
     tend = {}
-    dias_con_data = {}  # mes -> set(dias YYYYMMDD)
+    dias_con_data = {}  # mes -> set(dias YYYYMMDD) — GLOBAL (todos los PDV), no solo este
     meses_en_ventas = set()
     for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY DIA", p):
         mes = parsear_mes(r["DIA"])
@@ -418,7 +418,18 @@ def detalle_pos():
         if mes in meses_en_ventas:
             continue
         tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
-        dias_con_data.setdefault(mes, set()).add(str(r["DIA"]))
+    # Dias con data GLOBALES por mes: cuantos dias distintos tiene el SAP
+    # (no depende del PDV; así proyectamos abril sobre 12 días, no 5)
+    # Normalizamos DIA a 'YYYYMMDD' (solo dígitos) para no duplicar el mismo día
+    # cuando aparece como '2026/04/01' y '20260401' en el mismo archivo.
+    import re as _re
+    for r in query("SELECT DISTINCT DIA FROM sap WHERE UNIDAD='FARMACIAS' AND DIA IS NOT NULL"):
+        mes = parsear_mes(r["DIA"])
+        if mes in meses_en_ventas:
+            continue
+        d_norm = _re.sub(r"\D", "", str(r["DIA"]))[:8]
+        if len(d_norm) == 8:
+            dias_con_data.setdefault(mes, set()).add(d_norm)
 
     import calendar
     def _dias_en_mes(mes_key):
