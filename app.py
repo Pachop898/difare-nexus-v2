@@ -419,17 +419,25 @@ def detalle_pos():
             continue
         tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
     # Dias con data GLOBALES por mes: cuantos dias distintos tiene el SAP
-    # (no depende del PDV; así proyectamos abril sobre 12 días, no 5)
-    # Normalizamos DIA a 'YYYYMMDD' (solo dígitos) para no duplicar el mismo día
-    # cuando aparece como '2026/04/01' y '20260401' en el mismo archivo.
+    # (no depende del PDV; así proyectamos abril sobre 12 días, no 5).
+    # Normalizamos DIA a 'YYYYMMDD' para deduplicar formatos '2026/04/01'
+    # y '20260401', y excluimos días con <100 filas (ventas de madrugada
+    # del día siguiente al corte del snapshot semanal — p.ej. 13/04 con 2 filas).
     import re as _re
-    for r in query("SELECT DISTINCT DIA FROM sap WHERE UNIDAD='FARMACIAS' AND DIA IS NOT NULL"):
+    _conteo = {}
+    for r in query("SELECT DIA, COUNT(*) as n FROM sap WHERE UNIDAD='FARMACIAS' AND DIA IS NOT NULL GROUP BY DIA"):
         mes = parsear_mes(r["DIA"])
         if mes in meses_en_ventas:
             continue
         d_norm = _re.sub(r"\D", "", str(r["DIA"]))[:8]
-        if len(d_norm) == 8:
-            dias_con_data.setdefault(mes, set()).add(d_norm)
+        if len(d_norm) != 8:
+            continue
+        _conteo.setdefault(mes, {})
+        _conteo[mes][d_norm] = _conteo[mes].get(d_norm, 0) + (r["n"] or 0)
+    for mes, dias_n in _conteo.items():
+        for d, n in dias_n.items():
+            if n >= 100:  # umbral: filas residuales de madrugada (≈2) quedan fuera
+                dias_con_data.setdefault(mes, set()).add(d)
 
     import calendar
     def _dias_en_mes(mes_key):
