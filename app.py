@@ -43,6 +43,50 @@ _DB_CANDIDATES = [
 DB_PATH = next((p for p in _DB_CANDIDATES if os.path.exists(p)), _DB_CANDIDATES[0])
 print(f"[v2] DB_PATH = {DB_PATH} (exists={os.path.exists(DB_PATH)})")
 
+
+def _excels_mas_nuevos_que_db() -> bool:
+    """True si algún .xlsx en excels/ es más nuevo que data.db (o data.db no existe)."""
+    try:
+        from glob import glob
+        excels_dir = os.path.join(_BASE, "excels")
+        if not os.path.isdir(excels_dir):
+            return False
+        xls = glob(os.path.join(excels_dir, "*.xlsx"))
+        if not xls:
+            return False
+        if not os.path.exists(DB_PATH):
+            return True
+        db_mtime = os.path.getmtime(DB_PATH)
+        return any(os.path.getmtime(f) > db_mtime for f in xls)
+    except Exception as e:
+        print(f"[v2] check excels mtime falló: {e}")
+        return False
+
+
+def _regenerar_data_db():
+    """Corre el ETL actualizar_data.py para regenerar data.db desde excels/."""
+    try:
+        print("[v2] Excels más nuevos que data.db → regenerando…")
+        # Importar como módulo para reusar el mismo proceso Python
+        import importlib.util
+        etl_path = os.path.join(_BASE, "actualizar_data.py")
+        if not os.path.exists(etl_path):
+            print(f"[v2] ETL no encontrado en {etl_path}")
+            return
+        spec = importlib.util.spec_from_file_location("actualizar_data", etl_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.main()
+        # Recalcular DB_PATH por si el ETL escribió en api/data.db
+        global DB_PATH
+        DB_PATH = next((p for p in _DB_CANDIDATES if os.path.exists(p)), _DB_CANDIDATES[0])
+        print(f"[v2] data.db regenerado OK → {DB_PATH}")
+    except SystemExit:
+        # actualizar_data.py hace sys.exit en algunos paths; lo ignoramos
+        pass
+    except Exception as e:
+        print(f"[v2] Regeneración de data.db falló: {e}")
+
 # ── USUARIOS ──
 def _hash(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
@@ -800,8 +844,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="flex items-center justify-between mb-4">
       <div>
         <h2 class="text-lg font-semibold">Venta mensual por canal</h2>
-        <p class="text-sm text-slate-500">Farmacias, Distribución y Total por mes</p>
+        <p class="text-sm text-slate-500">Farmacias, Distribución y Total por mes · mes actual incluye proyección (banda punteada)</p>
       </div>
+      <div id="chart-canal-sub" class="text-xs text-slate-500 text-right"></div>
     </div>
     <div class="relative" style="height:360px"><canvas id="chartCanalMes"></canvas></div>
   </section>
@@ -905,22 +950,41 @@ function mostrarError(msg){
     const filas=d.filas||[];
     if(!filas.length) return;
     const nombresMes=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-    const labels=filas.map(f=>nombresMes[f.mes-1]||("M"+f.mes));
+    const labels=filas.map(f=>{
+      if(f.proyectado) return (nombresMes[f.mes-1]||("M"+f.mes))+" (proy)";
+      return nombresMes[f.mes-1]||("M"+f.mes);
+    });
+    // Deltas de proyección (0 para meses cerrados)
+    const dFarm=filas.map(f=>f.proyectado?(f.farmacias_delta||0):0);
+    const dDist=filas.map(f=>f.proyectado?(f.distribucion_delta||0):0);
+    const dTot =filas.map(f=>f.proyectado?(f.total_delta||0):0);
+    // Subtítulo con detalle del mes proyectado
+    const actual=filas.find(f=>f.proyectado);
+    if(actual){
+      const sub=document.getElementById("chart-canal-sub");
+      if(sub){
+        const proyTot=fmtUSD(actual.total_proy||0);
+        sub.textContent=`Proyección ${nombresMes[actual.mes-1]}: ${proyTot} (día ${actual.ultimo_dia}/${actual.dias_mes})`;
+      }
+    }
     new Chart(document.getElementById("chartCanalMes"),{
       type:"bar",
       data:{labels,datasets:[
-        {label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:42},
-        {label:"Distribución",data:filas.map(f=>f.distribucion),backgroundColor:"#10b981",borderRadius:6,maxBarThickness:42},
-        {label:"Total",data:filas.map(f=>f.total),backgroundColor:"#f59e0b",borderRadius:6,maxBarThickness:42},
+        {label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:42,stack:"farm"},
+        {label:"Farm. proyectado",data:dFarm,backgroundColor:"rgba(37,99,235,0.35)",borderColor:"#2563eb",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"farm"},
+        {label:"Distribución",data:filas.map(f=>f.distribucion),backgroundColor:"#10b981",borderRadius:6,maxBarThickness:42,stack:"dist"},
+        {label:"Dist. proyectado",data:dDist,backgroundColor:"rgba(16,185,129,0.35)",borderColor:"#10b981",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"dist"},
+        {label:"Total",data:filas.map(f=>f.total),backgroundColor:"#f59e0b",borderRadius:6,maxBarThickness:42,stack:"tot"},
+        {label:"Total proyectado",data:dTot,backgroundColor:"rgba(245,158,11,0.35)",borderColor:"#f59e0b",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"tot"},
       ]},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{
-          legend:{position:"bottom",labels:{boxWidth:12,font:{size:12},padding:16}},
+          legend:{position:"bottom",labels:{boxWidth:12,font:{size:12},padding:12,filter:(it)=>!it.text.includes("proyectado")||it.datasetIndex===5}},
           tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}
         },
         scales:{
-          y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"},beginAtZero:true},
-          x:{grid:{display:false}}
+          y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"},beginAtZero:true},
+          x:{stacked:true,grid:{display:false}}
         }
       }
     });
@@ -995,6 +1059,12 @@ try:
     import threading
     def _prewarm():
         try:
+            # 1) Si los Excels son más nuevos que data.db, regenerar antes de cachear
+            if _excels_mas_nuevos_que_db():
+                _regenerar_data_db()
+            else:
+                print("[v2] data.db al día con excels/, no hace falta regenerar")
+            # 2) Pre-cargar cache del dashboard (pandas sobre excels/)
             from agente import analitica
             print("[v2] Pre-cargando data de Excels en background…")
             analitica.cargar_data()

@@ -219,7 +219,11 @@ def _mes_num(mes_raw) -> int | None:
 def venta_por_canal_mes() -> list[dict]:
     """
     Devuelve la venta mensual desglosada por canal.
-    [{mes, farmacias, distribucion, total}, ...] ordenado por mes ascendente.
+    Para el mes en curso (incompleto) añade campos de proyección:
+      - proyectado=True
+      - farmacias_proy, distribucion_proy, total_proy (estimados fin-de-mes)
+      - ultimo_dia / dias_mes para contexto
+    [{mes, farmacias, distribucion, total, ...}, ...] ordenado por mes ascendente.
     """
     d = cargar_data()
     df = d["df_todos"]
@@ -231,6 +235,16 @@ def venta_por_canal_mes() -> list[dict]:
            .sum().reset_index())
     piv = g.pivot(index="MES", columns="UNIDAD", values="VENTA NETA RECUPERO").fillna(0)
     piv = piv.reset_index()
+
+    ultimo_dia = int(d.get("ultimo_dia_venta") or 0)
+    dias_mes = int(d.get("dias_mes") or 30)
+    mes_completo = bool(d.get("mes_completo"))
+    # El mes actual (incompleto) es el más alto presente si mes_completo=False
+    meses_raw = [_mes_num(r["MES"]) for _, r in piv.iterrows()]
+    meses_validos = [m for m in meses_raw if m is not None]
+    mes_actual = max(meses_validos) if meses_validos and not mes_completo else None
+    factor = (dias_mes / ultimo_dia) if (ultimo_dia and dias_mes) else 1.0
+
     out = []
     for _, r in piv.iterrows():
         n = _mes_num(r["MES"])
@@ -238,12 +252,29 @@ def venta_por_canal_mes() -> list[dict]:
             continue
         f = float(r.get("FARMACIAS", 0) or 0)
         dist = float(r.get("DISTRIBUCION DIFARE", 0) or 0)
-        out.append({
+        fila = {
             "mes": n,
             "farmacias": f,
             "distribucion": dist,
             "total": f + dist,
-        })
+            "proyectado": False,
+        }
+        if n == mes_actual and factor > 1.0:
+            f_proy = f * factor
+            dist_proy = dist * factor
+            fila.update({
+                "proyectado": True,
+                "ultimo_dia": ultimo_dia,
+                "dias_mes": dias_mes,
+                "farmacias_proy": f_proy,
+                "distribucion_proy": dist_proy,
+                "total_proy": f_proy + dist_proy,
+                # delta = lo que falta por vender para llegar a la proyección
+                "farmacias_delta": max(f_proy - f, 0),
+                "distribucion_delta": max(dist_proy - dist, 0),
+                "total_delta": max((f_proy + dist_proy) - (f + dist), 0),
+            })
+        out.append(fila)
     out.sort(key=lambda x: x["mes"])
     return out
 
