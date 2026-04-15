@@ -51,6 +51,7 @@ USUARIOS = {
     os.getenv("USER_1_NAME", "francisco"): _hash(os.getenv("USER_1_PASS", "admin123")),
     os.getenv("USER_2_NAME", "Campo"):     _hash(os.getenv("USER_2_PASS", "markup123")),
     os.getenv("USER_3_NAME", "Gerente"):   _hash(os.getenv("USER_3_PASS", "gerentes2026")),
+    os.getenv("USER_4_NAME", "Viernes"):   _hash(os.getenv("USER_4_PASS", "Callejero")),
 }
 
 # ── ROLES (Fase 1) ──
@@ -58,6 +59,7 @@ ROLES = {
     os.getenv("USER_1_NAME", "francisco"): "admin",
     os.getenv("USER_2_NAME", "Campo"):     "campo",
     os.getenv("USER_3_NAME", "Gerente"):   "gerencial",
+    os.getenv("USER_4_NAME", "Viernes"):   "campo",
 }
 
 
@@ -879,15 +881,25 @@ async function api(path){
   return r.json();
 }
 
+// Banner de error global
+function mostrarError(msg){
+  let b=document.getElementById("err-banner");
+  if(!b){b=document.createElement("div");b.id="err-banner";b.className="card p-4 border-l-4 border-red-500 bg-red-50 text-red-700 text-sm";document.querySelector("main").insertBefore(b,document.querySelector("main").firstChild);}
+  b.innerHTML="<b>Error al cargar datos:</b> "+msg;
+}
+
 // KPIs
 (async()=>{
-  const d=await api("/api/kpis"); if(!d) return;
-  document.getElementById("kpi-total").textContent=fmtUSD(d.venta_total);
-  document.getElementById("kpi-farm").textContent=fmtUSD(d.venta_farmacias);
-  document.getElementById("kpi-dist").textContent=fmtUSD(d.venta_distribucion);
-  document.getElementById("kpi-univ").textContent=(d.universo_pdv||0).toLocaleString("es-EC");
-  const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
-  document.getElementById("kpi-periodo").textContent=periodo;
+  try{
+    const d=await api("/api/kpis"); if(!d) return;
+    if(d.error){mostrarError(d.error);return;}
+    document.getElementById("kpi-total").textContent=fmtUSD(d.venta_total);
+    document.getElementById("kpi-farm").textContent=fmtUSD(d.venta_farmacias);
+    document.getElementById("kpi-dist").textContent=fmtUSD(d.venta_distribucion);
+    document.getElementById("kpi-univ").textContent=(d.universo_pdv||0).toLocaleString("es-EC");
+    const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
+    document.getElementById("kpi-periodo").textContent=periodo;
+  }catch(e){mostrarError(e.message||e);}
 })();
 
 // Tendencia por marca

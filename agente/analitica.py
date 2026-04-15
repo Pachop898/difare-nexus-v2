@@ -89,9 +89,15 @@ LEAD_TIME_DIAS = 2
 BUFFER_DIAS = 8
 DIAS_INV_SEGURIDAD = LEAD_TIME_DIAS + BUFFER_DIAS  # 10
 
-EXCELS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(_HERE)), "excels"
-)
+# Buscar carpeta excels/ en varias ubicaciones candidatas
+_EXCELS_CANDIDATES = [
+    os.path.join(os.path.dirname(_HERE), "excels"),              # /app/excels (Railway)
+    os.path.join(os.path.dirname(os.path.dirname(_HERE)), "excels"),  # legacy
+    os.path.join(_HERE, "excels"),                               # /app/agente/excels
+    "excels",                                                     # relativo al CWD
+]
+EXCELS_DIR = next((p for p in _EXCELS_CANDIDATES if os.path.isdir(p)), _EXCELS_CANDIDATES[0])
+print(f"[analitica] EXCELS_DIR = {EXCELS_DIR} (existe={os.path.isdir(EXCELS_DIR)})")
 
 
 # ══════════════════════════════════════════════════════════════
