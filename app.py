@@ -989,6 +989,19 @@ try:
     set_jwt_verifier(verificar_jwt, ROLES)
     app.register_blueprint(bp_gerencial)
     print("[v2] Blueprint gerencial registrado en /api/*")
+
+    # Pre-calentar cache de Excels en background para que el primer request al dashboard
+    # no tenga que esperar 20-60s de pandas leyendo los archivos.
+    import threading
+    def _prewarm():
+        try:
+            from agente import analitica
+            print("[v2] Pre-cargando data de Excels en background…")
+            analitica.cargar_data()
+            print("[v2] Data cacheada OK, dashboard listo para servir rápido")
+        except Exception as e:
+            print(f"[v2] Pre-warm falló (se cargará en la primera petición): {e}")
+    threading.Thread(target=_prewarm, daemon=True).start()
 except Exception as e:
     print(f"[v2] Blueprint gerencial NO registrado: {e}")
 

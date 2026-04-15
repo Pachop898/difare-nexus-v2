@@ -195,6 +195,27 @@ def tendencia_marca(unidad_negocio: str | None = None,
     return g.to_dict(orient="records")
 
 
+def _mes_num(mes_raw) -> int | None:
+    """Convierte 'MES' (formatos: '2026-01', '01', 1, '2026-1') a int 1-12."""
+    if mes_raw is None:
+        return None
+    s = str(mes_raw).strip()
+    if s in ("", "desconocido", "nan"):
+        return None
+    # Formato "YYYY-MM" o "YYYY-M"
+    if "-" in s:
+        try:
+            return int(s.split("-")[1])
+        except (ValueError, IndexError):
+            return None
+    # Formato numérico directo "1", "01", etc.
+    try:
+        n = int(float(s))
+        return n if 1 <= n <= 12 else None
+    except ValueError:
+        return None
+
+
 def venta_por_canal_mes() -> list[dict]:
     """
     Devuelve la venta mensual desglosada por canal.
@@ -209,17 +230,21 @@ def venta_por_canal_mes() -> list[dict]:
     g = (df.groupby(["MES", "UNIDAD"], dropna=True)["VENTA NETA RECUPERO"]
            .sum().reset_index())
     piv = g.pivot(index="MES", columns="UNIDAD", values="VENTA NETA RECUPERO").fillna(0)
-    piv = piv.reset_index().sort_values("MES")
+    piv = piv.reset_index()
     out = []
     for _, r in piv.iterrows():
+        n = _mes_num(r["MES"])
+        if n is None:
+            continue
         f = float(r.get("FARMACIAS", 0) or 0)
         dist = float(r.get("DISTRIBUCION DIFARE", 0) or 0)
         out.append({
-            "mes": int(r["MES"]),
+            "mes": n,
             "farmacias": f,
             "distribucion": dist,
             "total": f + dist,
         })
+    out.sort(key=lambda x: x["mes"])
     return out
 
 
