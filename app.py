@@ -722,6 +722,260 @@ def index():
 
 
 # ══════════════════════════════════════════════════════════════
+# Dashboard Gerencial — Día 4
+# ══════════════════════════════════════════════════════════════
+
+DASHBOARD_HTML = r"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Difare Nexus · Dashboard Gerencial</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body{font-family:'Inter',system-ui,sans-serif;background:#f6f7fb;color:#0f172a}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .kpi-val{font-variant-numeric:tabular-nums}
+  .seg{background:#f1f5f9;border-radius:10px;padding:4px;display:inline-flex;gap:4px}
+  .seg button{padding:6px 14px;font-size:13px;border-radius:7px;color:#475569;font-weight:500}
+  .seg button.active{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .row:hover{background:#f8fafc}
+  .spinner{border:2px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .fab{position:fixed;bottom:26px;right:26px;background:#0f172a;color:#fff;padding:14px 22px;border-radius:999px;box-shadow:0 10px 24px rgba(15,23,42,.25);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s}
+  .fab:hover{transform:translateY(-2px)}
+  table{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body class="min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold">N</div>
+      <div>
+        <div class="text-[15px] font-semibold">Difare Nexus</div>
+        <div class="text-xs text-slate-500">Dashboard Gerencial</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <span class="text-slate-600">Hola, <b id="userLabel">—</b></span>
+      <span id="rolBadge" class="px-2 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700">—</span>
+      <button onclick="logout()" class="text-slate-500 hover:text-slate-900 text-sm">Salir</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
+
+  <!-- KPI cards -->
+  <section id="kpis" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="card p-5">
+      <div class="text-xs text-slate-500 uppercase tracking-wide">Venta Total</div>
+      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-total">—</div>
+      <div class="text-xs text-slate-400 mt-1">Farmacias + Distribución</div>
+    </div>
+    <div class="card p-5">
+      <div class="text-xs text-slate-500 uppercase tracking-wide">Farmacias</div>
+      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-farm">—</div>
+      <div class="text-xs text-slate-400 mt-1">Canal directo</div>
+    </div>
+    <div class="card p-5">
+      <div class="text-xs text-slate-500 uppercase tracking-wide">Distribución</div>
+      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-dist">—</div>
+      <div class="text-xs text-slate-400 mt-1">Distribución Difare</div>
+    </div>
+    <div class="card p-5">
+      <div class="text-xs text-slate-500 uppercase tracking-wide">Universo PDV</div>
+      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-univ">—</div>
+      <div class="text-xs text-slate-400 mt-1" id="kpi-periodo">—</div>
+    </div>
+  </section>
+
+  <!-- Tendencia por marca -->
+  <section class="card p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold">Tendencia por marca</h2>
+        <p class="text-sm text-slate-500">Venta mensual por marca · datos acumulados del año</p>
+      </div>
+      <div class="seg" id="seg-canal">
+        <button data-v="TOTAL" class="active">Total</button>
+        <button data-v="FARMACIAS">Farmacias</button>
+        <button data-v="DIFARE">Distribución</button>
+      </div>
+    </div>
+    <div class="relative" style="height:340px"><canvas id="chartTendencia"></canvas></div>
+  </section>
+
+  <!-- Ranking + Pareto -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <section class="card p-6 xl:col-span-2">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-semibold">Ranking PDV</h2>
+          <p class="text-sm text-slate-500" id="ranking-sub">Top 50 farmacias por venta</p>
+        </div>
+        <div class="seg" id="seg-ranking">
+          <button data-v="FARMACIAS" class="active">Top 50 Farmacias</button>
+          <button data-v="DIFARE">Top 20 Distribución</button>
+        </div>
+      </div>
+      <div class="overflow-auto max-h-[420px]">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+            <tr>
+              <th class="text-left px-3 py-2 w-10">#</th>
+              <th class="text-left px-3 py-2">Cliente / PDV</th>
+              <th class="text-left px-3 py-2">Provincia</th>
+              <th class="text-right px-3 py-2">Venta</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-body"><tr><td colspan="4" class="text-center text-slate-400 py-6">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card p-6">
+      <h2 class="text-lg font-semibold">Pareto 80/20</h2>
+      <p class="text-sm text-slate-500 mb-3">Farmacias que acumulan el 80% de la venta</p>
+      <div class="text-3xl font-semibold kpi-val" id="pareto-count">—</div>
+      <div class="text-xs text-slate-500 mb-4">PDV en el 80% del total</div>
+      <div class="relative" style="height:240px"><canvas id="chartPareto"></canvas></div>
+    </section>
+  </div>
+</main>
+
+<a href="/" class="fab">
+  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  Consultar farmacia
+</a>
+
+<script>
+const S=window.location.origin;
+let TK=localStorage.getItem("nx_tk");
+let US=localStorage.getItem("nx_us");
+let RL=localStorage.getItem("nx_rl");
+
+if(!TK||!US||(RL!=="admin"&&RL!=="gerencial")){window.location.href="/";}
+
+document.getElementById("userLabel").textContent=US||"—";
+document.getElementById("rolBadge").textContent=RL==="admin"?"Admin":"Gerencial";
+
+const AH={"Content-Type":"application/json","Authorization":"Bearer "+TK};
+const fmtUSD = v => "$"+Math.round(v||0).toLocaleString("es-EC");
+const fmtShort = v => {v=v||0; if(v>=1e6)return "$"+(v/1e6).toFixed(1)+"M"; if(v>=1e3)return "$"+(v/1e3).toFixed(0)+"K"; return "$"+Math.round(v)}
+
+function logout(){
+  fetch(S+"/logout",{method:"POST",headers:AH,body:"{}"}).catch(()=>{});
+  localStorage.clear();
+  window.location.href="/";
+}
+
+async function api(path){
+  const r=await fetch(S+path,{headers:AH});
+  if(r.status===401){logout();return null;}
+  return r.json();
+}
+
+// KPIs
+(async()=>{
+  const d=await api("/api/kpis"); if(!d) return;
+  document.getElementById("kpi-total").textContent=fmtUSD(d.venta_total);
+  document.getElementById("kpi-farm").textContent=fmtUSD(d.venta_farmacias);
+  document.getElementById("kpi-dist").textContent=fmtUSD(d.venta_distribucion);
+  document.getElementById("kpi-univ").textContent=(d.universo_pdv||0).toLocaleString("es-EC");
+  const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
+  document.getElementById("kpi-periodo").textContent=periodo;
+})();
+
+// Tendencia por marca
+let chartTend=null;
+async function cargarTendencia(un){
+  const d=await api("/api/tendencia-marca?un="+(un==="TOTAL"?"":un)); if(!d) return;
+  // Pivotar: meses en X, series por marca
+  const meses=[...new Set(d.filas.map(r=>r.MES))].sort((a,b)=>a-b);
+  const marcas=[...new Set(d.filas.map(r=>r.MARCA))];
+  const palette=["#2563eb","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16","#64748b","#f97316","#14b8a6","#a855f7"];
+  const datasets=marcas.map((m,i)=>{
+    const data=meses.map(ms=>{const f=d.filas.find(r=>r.MARCA===m&&r.MES===ms);return f?f.venta:0});
+    return {label:m,data,borderColor:palette[i%palette.length],backgroundColor:palette[i%palette.length]+"22",tension:.3,pointRadius:3,borderWidth:2};
+  });
+  const nombresMes=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  if(chartTend)chartTend.destroy();
+  chartTend=new Chart(document.getElementById("chartTendencia"),{
+    type:"line",
+    data:{labels:meses.map(m=>nombresMes[m-1]||("M"+m)),datasets},
+    options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{position:"bottom",labels:{boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"}},x:{grid:{display:false}}}
+    }
+  });
+}
+document.querySelectorAll("#seg-canal button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#seg-canal button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); cargarTendencia(b.dataset.v);
+}));
+cargarTendencia("TOTAL");
+
+// Ranking PDV
+async function cargarRanking(canal){
+  const top=canal==="FARMACIAS"?50:20;
+  const d=await api("/api/ranking-pdv?canal="+canal+"&top="+top); if(!d) return;
+  document.getElementById("ranking-sub").textContent=canal==="FARMACIAS"?"Top 50 farmacias por venta":"Top 20 clientes de distribución";
+  const body=document.getElementById("ranking-body");
+  if(!d.filas||!d.filas.length){body.innerHTML='<tr><td colspan="4" class="text-center text-slate-400 py-6">Sin datos</td></tr>';return;}
+  body.innerHTML=d.filas.map((f,i)=>{
+    const prov=f.PROVINCIA||f.GRUPOCLIENTE||"—";
+    return `<tr class="row border-b border-slate-100"><td class="px-3 py-2 text-slate-400">${i+1}</td><td class="px-3 py-2 font-medium">${f.cliente||"—"}</td><td class="px-3 py-2 text-slate-500">${prov}</td><td class="px-3 py-2 text-right font-medium">${fmtUSD(f.venta)}</td></tr>`;
+  }).join("");
+}
+document.querySelectorAll("#seg-ranking button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#seg-ranking button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); cargarRanking(b.dataset.v);
+}));
+cargarRanking("FARMACIAS");
+
+// Pareto
+(async()=>{
+  const d=await api("/api/pareto-pdv"); if(!d) return;
+  document.getElementById("pareto-count").textContent=(d.total_pdv_pareto||0).toLocaleString("es-EC");
+  const filas=(d.filas||[]).slice(0,20);
+  if(!filas.length)return;
+  new Chart(document.getElementById("chartPareto"),{
+    type:"bar",
+    data:{labels:filas.map((f,i)=>"#"+(i+1)),
+      datasets:[
+        {type:"bar",label:"Venta",data:filas.map(f=>f["VENTA NETA RECUPERO"]),backgroundColor:"#2563eb",yAxisID:"y"},
+        {type:"line",label:"% acum",data:filas.map(f=>f.pct_acum),borderColor:"#f59e0b",backgroundColor:"#f59e0b22",tension:.2,yAxisID:"y1",pointRadius:0,borderWidth:2}
+      ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{
+          title:ctx=>filas[ctx[0].dataIndex].POS||"",
+          label:ctx=>ctx.dataset.label==="Venta"?fmtUSD(ctx.parsed.y):ctx.parsed.y.toFixed(1)+"% acum"
+        }}},
+      scales:{
+        y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"}},
+        y1:{position:"right",min:0,max:100,ticks:{callback:v=>v+"%"},grid:{display:false}},
+        x:{grid:{display:false},ticks:{font:{size:10}}}
+      }}
+  });
+})();
+</script>
+</body>
+</html>"""
+
+
+@app.route("/dashboard")
+def dashboard():
+    return Response(DASHBOARD_HTML, mimetype="text/html")
+
+
+# ══════════════════════════════════════════════════════════════
 # Blueprint Gerencial v2 (dashboard) — Día 3
 # ══════════════════════════════════════════════════════════════
 try:
@@ -902,12 +1156,18 @@ body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;
 <script>
 const S=window.location.origin;
 let TK=localStorage.getItem("nx_tk")||null, US=localStorage.getItem("nx_us")||null;
+let RL=localStorage.getItem("nx_rl")||null;
 let posActual=null, esperando=false;
 
 function AH(){return{"Content-Type":"application/json","Authorization":"Bearer "+TK}}
 
+function routePorRol(){
+  if(RL==="admin"||RL==="gerencial"){window.location.href="/dashboard";return true;}
+  return false;
+}
+
 window.addEventListener("DOMContentLoaded",async()=>{
-  if(TK){try{const r=await fetch(S+"/verificar_token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:TK})});const d=await r.json();if(d.valido){entrarApp();return;}}catch(e){}localStorage.removeItem("nx_tk");localStorage.removeItem("nx_us");TK=null;}
+  if(TK){try{const r=await fetch(S+"/verificar_token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:TK})});const d=await r.json();if(d.valido){if(routePorRol())return;entrarApp();return;}}catch(e){}localStorage.removeItem("nx_tk");localStorage.removeItem("nx_us");localStorage.removeItem("nx_rl");TK=null;RL=null;}
   document.getElementById("loginScreen").style.display="flex";
 });
 
@@ -917,7 +1177,7 @@ async function hacerLogin(){
   const err=document.getElementById("loginError");err.textContent="";
   if(!u||!p){err.textContent="Ingresa usuario y contrasena";return;}
   try{const r=await fetch(S+"/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({usuario:u,contrasena:p})});const d=await r.json();
-    if(d.exito){TK=d.token;US=d.usuario;localStorage.setItem("nx_tk",TK);localStorage.setItem("nx_us",US);entrarApp();}
+    if(d.exito){TK=d.token;US=d.usuario;RL=d.rol||"campo";localStorage.setItem("nx_tk",TK);localStorage.setItem("nx_us",US);localStorage.setItem("nx_rl",RL);if(routePorRol())return;entrarApp();}
     else{err.textContent=d.error||"Error";}
   }catch(e){err.textContent="No se pudo conectar";}
 }
@@ -930,7 +1190,7 @@ function entrarApp(){
 }
 function cerrarSesion(){
   fetch(S+"/logout",{method:"POST",headers:AH(),body:"{}"}).catch(()=>{});
-  localStorage.removeItem("nx_tk");localStorage.removeItem("nx_us");TK=null;US=null;
+  localStorage.removeItem("nx_tk");localStorage.removeItem("nx_us");localStorage.removeItem("nx_rl");TK=null;US=null;RL=null;
   document.getElementById("appScreen").style.display="none";
   document.getElementById("loginScreen").style.display="flex";
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";
