@@ -33,11 +33,15 @@ def get_anthropic_client():
 # ── CONFIG ──
 JWT_SECRET = os.getenv("JWT_SECRET", "difare-nexus-secret-cambiar-en-produccion")
 JWT_EXPIRY = 86400
-# data.db debe vivir DENTRO de api/ para que Vercel lo incluya en el bundle
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db")
-# Fallback para desarrollo local (raíz del proyecto)
-if not os.path.exists(DB_PATH):
-    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data.db")
+# data.db: buscar en varias ubicaciones (Railway, Vercel, local)
+_BASE = os.path.dirname(os.path.abspath(__file__))
+_DB_CANDIDATES = [
+    os.path.join(_BASE, "data.db"),                # junto a app.py
+    os.path.join(_BASE, "api", "data.db"),         # en api/ (estructura Vercel)
+    os.path.join(os.path.dirname(_BASE), "data.db"),  # un nivel arriba
+]
+DB_PATH = next((p for p in _DB_CANDIDATES if os.path.exists(p)), _DB_CANDIDATES[0])
+print(f"[v2] DB_PATH = {DB_PATH} (exists={os.path.exists(DB_PATH)})")
 
 # ── USUARIOS ──
 def _hash(pw):
