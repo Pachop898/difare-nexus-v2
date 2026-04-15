@@ -85,6 +85,20 @@ def tendencia_marca():
 
 
 # ══════════════════════════════════════════════════════════════
+# 2b) Venta por canal por mes (barras agrupadas dashboard)
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/venta-canal-mes", methods=["GET"])
+def venta_canal_mes():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        return jsonify({"filas": analitica.venta_por_canal_mes()}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
 # 3) Ranking PDV (pregunta KAM #4)
 # ══════════════════════════════════════════════════════════════
 

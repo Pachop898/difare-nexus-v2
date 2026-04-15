@@ -795,20 +795,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </section>
 
-  <!-- Tendencia por marca -->
+  <!-- Venta por canal por mes -->
   <section class="card p-6">
     <div class="flex items-center justify-between mb-4">
       <div>
-        <h2 class="text-lg font-semibold">Tendencia por marca</h2>
-        <p class="text-sm text-slate-500">Venta mensual por marca · datos acumulados del año</p>
-      </div>
-      <div class="seg" id="seg-canal">
-        <button data-v="TOTAL" class="active">Total</button>
-        <button data-v="FARMACIAS">Farmacias</button>
-        <button data-v="DIFARE">Distribución</button>
+        <h2 class="text-lg font-semibold">Venta mensual por canal</h2>
+        <p class="text-sm text-slate-500">Farmacias, Distribución y Total por mes</p>
       </div>
     </div>
-    <div class="relative" style="height:340px"><canvas id="chartTendencia"></canvas></div>
+    <div class="relative" style="height:360px"><canvas id="chartCanalMes"></canvas></div>
   </section>
 
   <!-- Ranking + Pareto -->
@@ -902,36 +897,35 @@ function mostrarError(msg){
   }catch(e){mostrarError(e.message||e);}
 })();
 
-// Tendencia por marca
-let chartTend=null;
-async function cargarTendencia(un){
-  const d=await api("/api/tendencia-marca?un="+(un==="TOTAL"?"":un)); if(!d) return;
-  // Pivotar: meses en X, series por marca
-  const meses=[...new Set(d.filas.map(r=>r.MES))].sort((a,b)=>a-b);
-  const marcas=[...new Set(d.filas.map(r=>r.MARCA))];
-  const palette=["#2563eb","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16","#64748b","#f97316","#14b8a6","#a855f7"];
-  const datasets=marcas.map((m,i)=>{
-    const data=meses.map(ms=>{const f=d.filas.find(r=>r.MARCA===m&&r.MES===ms);return f?f.venta:0});
-    return {label:m,data,borderColor:palette[i%palette.length],backgroundColor:palette[i%palette.length]+"22",tension:.3,pointRadius:3,borderWidth:2};
-  });
-  const nombresMes=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  if(chartTend)chartTend.destroy();
-  chartTend=new Chart(document.getElementById("chartTendencia"),{
-    type:"line",
-    data:{labels:meses.map(m=>nombresMes[m-1]||("M"+m)),datasets},
-    options:{responsive:true,maintainAspectRatio:false,
-      interaction:{mode:"index",intersect:false},
-      plugins:{legend:{position:"bottom",labels:{boxWidth:12,font:{size:11}}},
-        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}},
-      scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"}},x:{grid:{display:false}}}
-    }
-  });
-}
-document.querySelectorAll("#seg-canal button").forEach(b=>b.addEventListener("click",()=>{
-  document.querySelectorAll("#seg-canal button").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active"); cargarTendencia(b.dataset.v);
-}));
-cargarTendencia("TOTAL");
+// Venta por canal por mes (barras agrupadas)
+(async()=>{
+  try{
+    const d=await api("/api/venta-canal-mes"); if(!d) return;
+    if(d.error){mostrarError(d.error);return;}
+    const filas=d.filas||[];
+    if(!filas.length) return;
+    const nombresMes=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const labels=filas.map(f=>nombresMes[f.mes-1]||("M"+f.mes));
+    new Chart(document.getElementById("chartCanalMes"),{
+      type:"bar",
+      data:{labels,datasets:[
+        {label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:42},
+        {label:"Distribución",data:filas.map(f=>f.distribucion),backgroundColor:"#10b981",borderRadius:6,maxBarThickness:42},
+        {label:"Total",data:filas.map(f=>f.total),backgroundColor:"#f59e0b",borderRadius:6,maxBarThickness:42},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:"bottom",labels:{boxWidth:12,font:{size:12},padding:16}},
+          tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}
+        },
+        scales:{
+          y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"},beginAtZero:true},
+          x:{grid:{display:false}}
+        }
+      }
+    });
+  }catch(e){mostrarError(e.message||e);}
+})();
 
 // Ranking PDV
 async function cargarRanking(canal){

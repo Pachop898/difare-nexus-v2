@@ -195,6 +195,34 @@ def tendencia_marca(unidad_negocio: str | None = None,
     return g.to_dict(orient="records")
 
 
+def venta_por_canal_mes() -> list[dict]:
+    """
+    Devuelve la venta mensual desglosada por canal.
+    [{mes, farmacias, distribucion, total}, ...] ordenado por mes ascendente.
+    """
+    d = cargar_data()
+    df = d["df_todos"]
+    if df.empty:
+        return []
+    # Solo canales de venta real (excluye 'DIFARE S.A.' que es bodega)
+    df = df[df["UNIDAD"].isin(["FARMACIAS", "DISTRIBUCION DIFARE"])]
+    g = (df.groupby(["MES", "UNIDAD"], dropna=True)["VENTA NETA RECUPERO"]
+           .sum().reset_index())
+    piv = g.pivot(index="MES", columns="UNIDAD", values="VENTA NETA RECUPERO").fillna(0)
+    piv = piv.reset_index().sort_values("MES")
+    out = []
+    for _, r in piv.iterrows():
+        f = float(r.get("FARMACIAS", 0) or 0)
+        dist = float(r.get("DISTRIBUCION DIFARE", 0) or 0)
+        out.append({
+            "mes": int(r["MES"]),
+            "farmacias": f,
+            "distribucion": dist,
+            "total": f + dist,
+        })
+    return out
+
+
 # ══════════════════════════════════════════════════════════════
 # 4) Rankings (pregunta KAM #4)
 # ══════════════════════════════════════════════════════════════
