@@ -800,18 +800,29 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  body{font-family:'Inter',system-ui,sans-serif;background:#f6f7fb;color:#0f172a}
-  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-  .kpi-val{font-variant-numeric:tabular-nums}
-  .seg{background:#f1f5f9;border-radius:10px;padding:4px;display:inline-flex;gap:4px}
-  .seg button{padding:6px 14px;font-size:13px;border-radius:7px;color:#475569;font-weight:500}
-  .seg button.active{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-  .row:hover{background:#f8fafc}
-  .spinner{border:2px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
+  :root{--navy:#0a1628;--navy2:#111f38;--blue:#1B3A6B;--azure:#2E75B6;--gold:#C9A84C;--gold2:#F0C97A;--white:#F8FAFF;--muted:#7a8fbb;--border:rgba(46,117,182,0.2)}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:var(--navy);color:var(--white)}
+  .card{background:var(--navy2);border:1px solid var(--border);border-radius:14px}
+  .kpi-val{font-variant-numeric:tabular-nums;color:var(--gold)}
+  .kpi-label{color:var(--muted);text-transform:uppercase;letter-spacing:0.05em}
+  .kpi-sub{color:var(--muted)}
+  h2.section-title{color:var(--gold);font-family:'Playfair Display',serif}
+  .seg{background:rgba(27,58,107,0.3);border:1px solid var(--border);border-radius:10px;padding:4px;display:inline-flex;gap:4px}
+  .seg button{padding:6px 14px;font-size:13px;border-radius:7px;color:var(--muted);font-weight:500;background:transparent;border:none;cursor:pointer}
+  .seg button.active{background:var(--blue);color:var(--gold);box-shadow:0 1px 4px rgba(0,0,0,.2)}
+  .seg button:hover{color:var(--gold)}
+  .row:hover{background:rgba(46,117,182,0.08)}
+  .spinner{border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .fab{position:fixed;bottom:26px;right:26px;background:#0f172a;color:#fff;padding:14px 22px;border-radius:999px;box-shadow:0 10px 24px rgba(15,23,42,.25);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s}
-  .fab:hover{transform:translateY(-2px)}
-  table{font-variant-numeric:tabular-nums}
+  .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s}
+  .fab:hover{transform:translateY(-2px);border-color:var(--gold)}
+  table{font-variant-numeric:tabular-nums;color:var(--white)}
+  /* Dashboard table rows */
+  .dash-table th{color:var(--gold);background:var(--blue);border-bottom:1px solid var(--border);font-weight:500;font-size:12px}
+  .dash-table td{border-bottom:1px solid var(--border);color:var(--white)}
+  .dash-table .text-slate-400{color:var(--muted)!important}
+  .dash-table .text-slate-500{color:var(--muted)!important}
+  .dash-table .font-medium{color:var(--white)!important}
   .qbtn{font-size:12px;padding:6px 14px;border-radius:9px;border:1px solid rgba(201,168,76,0.3);color:#C9A84C;background:rgba(201,168,76,0.08);cursor:pointer;transition:all .15s;white-space:nowrap}
   .qbtn:hover{background:rgba(201,168,76,0.18);color:#F0C97A;border-color:rgba(201,168,76,0.5)}
   .chat-section{background:#0a1628;border:1px solid rgba(46,117,182,0.2);border-radius:14px;color:#F8FAFF}
@@ -841,19 +852,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </head>
 <body class="min-h-screen">
 
-<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+<header class="sticky top-0 z-20" style="background:var(--navy2);border-bottom:1px solid var(--border)">
   <div class="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold">N</div>
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center font-bold" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy)">N</div>
       <div>
-        <div class="text-[15px] font-semibold">Difare Nexus</div>
-        <div class="text-xs text-slate-500">Dashboard Gerencial</div>
+        <div class="text-[15px] font-semibold" style="font-family:'Playfair Display',serif;color:var(--gold)">Difare Nexus</div>
+        <div class="text-xs" style="color:var(--muted)">Dashboard Gerencial</div>
       </div>
     </div>
     <div class="flex items-center gap-3 text-sm">
-      <span class="text-slate-600">Hola, <b id="userLabel">—</b></span>
-      <span id="rolBadge" class="px-2 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700">—</span>
-      <button onclick="logout()" class="text-slate-500 hover:text-slate-900 text-sm">Salir</button>
+      <span style="color:var(--muted)">Hola, <b id="userLabel" style="color:var(--white)">—</b></span>
+      <span id="rolBadge" class="px-2 py-1 rounded-md text-xs font-medium" style="background:rgba(201,168,76,0.15);color:var(--gold)">—</span>
+      <button onclick="logout()" class="text-sm" style="color:var(--muted);border:1px solid var(--border);padding:4px 10px;border-radius:8px;cursor:pointer;background:transparent">Salir</button>
     </div>
   </div>
 </header>
@@ -863,24 +874,24 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- KPI cards -->
   <section id="kpis" class="grid grid-cols-1 md:grid-cols-4 gap-4">
     <div class="card p-5">
-      <div class="text-xs text-slate-500 uppercase tracking-wide">Venta Total</div>
+      <div class="text-xs kpi-label">Venta Total</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-total">—</div>
-      <div class="text-xs text-slate-400 mt-1">Farmacias + Distribución</div>
+      <div class="text-xs kpi-sub mt-1">Farmacias + Distribución</div>
     </div>
     <div class="card p-5">
-      <div class="text-xs text-slate-500 uppercase tracking-wide">Farmacias</div>
+      <div class="text-xs kpi-label">Farmacias</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-farm">—</div>
-      <div class="text-xs text-slate-400 mt-1">Canal directo</div>
+      <div class="text-xs kpi-sub mt-1">Canal directo</div>
     </div>
     <div class="card p-5">
-      <div class="text-xs text-slate-500 uppercase tracking-wide">Distribución</div>
+      <div class="text-xs kpi-label">Distribución</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-dist">—</div>
-      <div class="text-xs text-slate-400 mt-1">Distribución Difare</div>
+      <div class="text-xs kpi-sub mt-1">Distribución Difare</div>
     </div>
     <div class="card p-5">
-      <div class="text-xs text-slate-500 uppercase tracking-wide">Universo PDV</div>
+      <div class="text-xs kpi-label">Universo PDV</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-univ">—</div>
-      <div class="text-xs text-slate-400 mt-1" id="kpi-periodo">—</div>
+      <div class="text-xs kpi-sub mt-1" id="kpi-periodo">—</div>
     </div>
   </section>
 
@@ -888,8 +899,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <section class="card p-6">
     <div class="flex items-center justify-between mb-4">
       <div>
-        <h2 class="text-lg font-semibold">Venta mensual por canal</h2>
-        <p class="text-sm text-slate-500">Farmacias, Distribución y Total por mes · mes actual incluye proyección (banda punteada)</p>
+        <h2 class="text-lg font-semibold section-title">Venta mensual por canal</h2>
+        <p class="text-sm" style="color:var(--muted)">Farmacias, Distribución y Total por mes · mes actual incluye proyección (banda punteada)</p>
       </div>
       <div id="chart-canal-sub" class="text-xs text-slate-500 text-right"></div>
     </div>
@@ -901,8 +912,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <section class="card p-6 xl:col-span-2">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-lg font-semibold">Ranking PDV</h2>
-          <p class="text-sm text-slate-500" id="ranking-sub">Top 50 farmacias por venta</p>
+          <h2 class="text-lg font-semibold section-title">Ranking PDV</h2>
+          <p class="text-sm" style="color:var(--muted)" id="ranking-sub">Top 50 farmacias por venta</p>
         </div>
         <div class="seg" id="seg-ranking">
           <button data-v="FARMACIAS" class="active">Top 50 Farmacias</button>
@@ -911,7 +922,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
       <div class="overflow-auto max-h-[420px]">
         <table class="w-full text-sm">
-          <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <thead class="text-xs uppercase tracking-wide sticky top-0" style="background:var(--blue);color:var(--gold)">
             <tr>
               <th class="text-left px-3 py-2 w-10">#</th>
               <th class="text-left px-3 py-2">Cliente / PDV</th>
@@ -925,8 +936,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </section>
 
     <section class="card p-6">
-      <h2 class="text-lg font-semibold">Pareto 80/20</h2>
-      <p class="text-sm text-slate-500 mb-3">Farmacias que acumulan el 80% de la venta</p>
+      <h2 class="text-lg font-semibold section-title">Pareto 80/20</h2>
+      <p class="text-sm" style="color:var(--muted) mb-3">Farmacias que acumulan el 80% de la venta</p>
       <div class="text-3xl font-semibold kpi-val" id="pareto-count">—</div>
       <div class="text-xs text-slate-500 mb-4">PDV en el 80% del total</div>
       <div class="relative" style="height:240px"><canvas id="chartPareto"></canvas></div>
@@ -980,6 +991,9 @@ document.getElementById("userLabel").textContent=US||"—";
 document.getElementById("rolBadge").textContent=RL==="admin"?"Admin":"Gerencial";
 
 const AH={"Content-Type":"application/json","Authorization":"Bearer "+TK};
+// Dark theme global para Chart.js
+Chart.defaults.color="#7a8fbb";
+Chart.defaults.borderColor="rgba(46,117,182,0.15)";
 const fmtUSD = v => "$"+Math.round(v||0).toLocaleString("es-EC");
 const fmtShort = v => {v=v||0; if(v>=1e6)return "$"+(v/1e6).toFixed(1)+"M"; if(v>=1e3)return "$"+(v/1e3).toFixed(0)+"K"; return "$"+Math.round(v)}
 
@@ -1057,7 +1071,7 @@ function mostrarError(msg){
           tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}
         },
         scales:{
-          y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"},beginAtZero:true},
+          y:{stacked:true,ticks:{callback:v=>fmtShort(v)},grid:{color:"rgba(46,117,182,0.15)"},beginAtZero:true},
           x:{stacked:true,grid:{display:false}}
         }
       }
@@ -1074,7 +1088,7 @@ async function cargarRanking(canal){
   if(!d.filas||!d.filas.length){body.innerHTML='<tr><td colspan="4" class="text-center text-slate-400 py-6">Sin datos</td></tr>';return;}
   body.innerHTML=d.filas.map((f,i)=>{
     const prov=f.PROVINCIA||f.GRUPOCLIENTE||"—";
-    return `<tr class="row border-b border-slate-100"><td class="px-3 py-2 text-slate-400">${i+1}</td><td class="px-3 py-2 font-medium">${f.cliente||"—"}</td><td class="px-3 py-2 text-slate-500">${prov}</td><td class="px-3 py-2 text-right font-medium">${fmtUSD(f.venta)}</td></tr>`;
+    return `<tr class="row" style="border-bottom:1px solid var(--border)"><td class="px-3 py-2" style="color:var(--muted)">${i+1}</td><td class="px-3 py-2 font-medium" style="color:var(--white)">${f.cliente||"—"}</td><td class="px-3 py-2" style="color:var(--muted)">${prov}</td><td class="px-3 py-2 text-right font-medium" style="color:var(--gold)">${fmtUSD(f.venta)}</td></tr>`;
   }).join("");
 }
 document.querySelectorAll("#seg-ranking button").forEach(b=>b.addEventListener("click",()=>{
@@ -1103,7 +1117,7 @@ cargarRanking("FARMACIAS");
           label:ctx=>ctx.dataset.label==="Venta"?fmtUSD(ctx.parsed.y):ctx.parsed.y.toFixed(1)+"% acum"
         }}},
       scales:{
-        y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"#f1f5f9"}},
+        y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"rgba(46,117,182,0.15)"}},
         y1:{position:"right",min:0,max:100,ticks:{callback:v=>v+"%"},grid:{display:false}},
         x:{grid:{display:false},ticks:{font:{size:10}}}
       }}
