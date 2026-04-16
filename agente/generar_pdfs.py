@@ -87,7 +87,17 @@ def detectar_ultimo_dia_stock_y_venta(carpeta="excels"):
             return 29, 29, 31, False
         fechas = farm["DIA"].apply(parsear_fecha_completa)
         fechas_validas = fechas.dropna()
-        ultimo_dia_venta = int(fechas_validas.dt.day.max())
+        # Filtrar días con al menos 100 filas (excluir madrugada residual)
+        farm_con_fecha = farm.copy()
+        farm_con_fecha["_fecha"] = fechas
+        farm_con_fecha = farm_con_fecha.dropna(subset=["_fecha"])
+        farm_con_fecha["_dia"] = farm_con_fecha["_fecha"].dt.day
+        filas_por_dia = farm_con_fecha.groupby("_dia").size()
+        dias_validos = filas_por_dia[filas_por_dia >= 100]
+        if dias_validos.empty:
+            ultimo_dia_venta = int(fechas_validas.dt.day.max())
+        else:
+            ultimo_dia_venta = int(dias_validos.index.max())
         mes = int(fechas_validas.dt.month.mode()[0])
         anio = int(fechas_validas.dt.year.mode()[0])
         dias_en_mes = calendar.monthrange(anio, mes)[1]

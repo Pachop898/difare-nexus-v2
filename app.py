@@ -871,6 +871,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
 <main class="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
 
+  <!-- Loading overlay -->
+  <div id="loading-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+    <div style="border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:48px;height:48px;animation:spin 1s linear infinite"></div>
+    <div style="color:var(--gold);font-size:16px;font-weight:500">Cargando datos...</div>
+    <div id="loading-sub" style="color:var(--muted);font-size:13px">Esto toma ~30 segundos después de cada deploy</div>
+  </div>
+
   <!-- KPI cards -->
   <section id="kpis" class="grid grid-cols-1 md:grid-cols-4 gap-4">
     <div class="card p-5">
@@ -1016,8 +1023,30 @@ function mostrarError(msg){
   b.innerHTML="<b>Error al cargar datos:</b> "+msg;
 }
 
-// KPIs
+// ── Esperar a que el servidor termine de cargar data ──
+async function waitForReady(maxWait=120){
+  const overlay=document.getElementById("loading-overlay");
+  const sub=document.getElementById("loading-sub");
+  overlay.style.display="flex";
+  const t0=Date.now();
+  while((Date.now()-t0)<maxWait*1000){
+    try{
+      const r=await fetch(S+"/api/ready");
+      const d=await r.json();
+      if(d.ready){overlay.style.display="none";return true;}
+    }catch(e){}
+    const elapsed=Math.round((Date.now()-t0)/1000);
+    if(sub)sub.textContent=`Procesando datos... ${elapsed}s`;
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  overlay.style.display="none";
+  return true; // proceder de todas formas
+}
+
+// ── Cargar todo el dashboard ──
 (async()=>{
+  await waitForReady();
+  // KPIs
   try{
     const d=await api("/api/kpis"); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
@@ -1028,10 +1057,8 @@ function mostrarError(msg){
     const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
     document.getElementById("kpi-periodo").textContent=periodo;
   }catch(e){mostrarError(e.message||e);}
-})();
 
-// Venta por canal por mes (barras agrupadas)
-(async()=>{
+  // Venta por canal por mes (barras agrupadas)
   try{
     const d=await api("/api/venta-canal-mes"); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
@@ -1042,11 +1069,9 @@ function mostrarError(msg){
       if(f.proyectado) return (nombresMes[f.mes-1]||("M"+f.mes))+" (proy)";
       return nombresMes[f.mes-1]||("M"+f.mes);
     });
-    // Deltas de proyección (0 para meses cerrados)
     const dFarm=filas.map(f=>f.proyectado?(f.farmacias_delta||0):0);
     const dDist=filas.map(f=>f.proyectado?(f.distribucion_delta||0):0);
     const dTot =filas.map(f=>f.proyectado?(f.total_delta||0):0);
-    // Subtítulo con detalle del mes proyectado
     const actual=filas.find(f=>f.proyectado);
     if(actual){
       const sub=document.getElementById("chart-canal-sub");
@@ -1077,9 +1102,39 @@ function mostrarError(msg){
       }
     });
   }catch(e){mostrarError(e.message||e);}
-})();
 
-// Ranking PDV
+  // Ranking PDV
+  cargarRanking("FARMACIAS");
+
+  // Pareto
+  try{
+    const d=await api("/api/pareto-pdv"); if(!d) return;
+    document.getElementById("pareto-count").textContent=(d.total_pdv_pareto||0).toLocaleString("es-EC");
+    const filas=(d.filas||[]).slice(0,20);
+    if(!filas.length)return;
+    new Chart(document.getElementById("chartPareto"),{
+      type:"bar",
+      data:{labels:filas.map((f,i)=>"#"+(i+1)),
+        datasets:[
+          {type:"bar",label:"Venta",data:filas.map(f=>f["VENTA NETA RECUPERO"]),backgroundColor:"#2563eb",yAxisID:"y"},
+          {type:"line",label:"% acum",data:filas.map(f=>f.pct_acum),borderColor:"#f59e0b",backgroundColor:"#f59e0b22",tension:.2,yAxisID:"y1",pointRadius:0,borderWidth:2}
+        ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{
+            title:ctx=>filas[ctx[0].dataIndex].POS||"",
+            label:ctx=>ctx.dataset.label==="Venta"?fmtUSD(ctx.parsed.y):ctx.parsed.y.toFixed(1)+"% acum"
+          }}},
+        scales:{
+          y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"rgba(46,117,182,0.15)"}},
+          y1:{position:"right",min:0,max:100,ticks:{callback:v=>v+"%"},grid:{display:false}},
+          x:{grid:{display:false},ticks:{font:{size:10}}}
+        }}
+    });
+  }catch(e){mostrarError(e.message||e);}
+})(); // fin de la función principal de carga
+
+// Ranking PDV (función reutilizable para el segmented control)
 async function cargarRanking(canal){
   const top=canal==="FARMACIAS"?50:20;
   const d=await api("/api/ranking-pdv?canal="+canal+"&top="+top); if(!d) return;
@@ -1095,34 +1150,6 @@ document.querySelectorAll("#seg-ranking button").forEach(b=>b.addEventListener("
   document.querySelectorAll("#seg-ranking button").forEach(x=>x.classList.remove("active"));
   b.classList.add("active"); cargarRanking(b.dataset.v);
 }));
-cargarRanking("FARMACIAS");
-
-// Pareto
-(async()=>{
-  const d=await api("/api/pareto-pdv"); if(!d) return;
-  document.getElementById("pareto-count").textContent=(d.total_pdv_pareto||0).toLocaleString("es-EC");
-  const filas=(d.filas||[]).slice(0,20);
-  if(!filas.length)return;
-  new Chart(document.getElementById("chartPareto"),{
-    type:"bar",
-    data:{labels:filas.map((f,i)=>"#"+(i+1)),
-      datasets:[
-        {type:"bar",label:"Venta",data:filas.map(f=>f["VENTA NETA RECUPERO"]),backgroundColor:"#2563eb",yAxisID:"y"},
-        {type:"line",label:"% acum",data:filas.map(f=>f.pct_acum),borderColor:"#f59e0b",backgroundColor:"#f59e0b22",tension:.2,yAxisID:"y1",pointRadius:0,borderWidth:2}
-      ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{
-          title:ctx=>filas[ctx[0].dataIndex].POS||"",
-          label:ctx=>ctx.dataset.label==="Venta"?fmtUSD(ctx.parsed.y):ctx.parsed.y.toFixed(1)+"% acum"
-        }}},
-      scales:{
-        y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"rgba(46,117,182,0.15)"}},
-        y1:{position:"right",min:0,max:100,ticks:{callback:v=>v+"%"},grid:{display:false}},
-        x:{grid:{display:false},ticks:{font:{size:10}}}
-      }}
-  });
-})();
 
 // ════════════════════════════════════════════════
 // CHAT GERENCIAL
@@ -1245,6 +1272,15 @@ def dashboard():
     return Response(DASHBOARD_HTML, mimetype="text/html")
 
 
+# ── Flag de pre-warm completado ──
+_data_ready = False
+
+@app.route("/api/ready")
+def api_ready():
+    """Health-check: ¿ya terminó el pre-warm de data?"""
+    return jsonify({"ready": _data_ready})
+
+
 # ══════════════════════════════════════════════════════════════
 # Blueprint Gerencial v2 (dashboard) — Día 3
 # ══════════════════════════════════════════════════════════════
@@ -1259,6 +1295,7 @@ try:
     # no tenga que esperar 20-60s de pandas leyendo los archivos.
     import threading
     def _prewarm():
+        global _data_ready
         try:
             # 1) Si los Excels son más nuevos que data.db, regenerar antes de cachear
             if _excels_mas_nuevos_que_db():
@@ -1269,11 +1306,14 @@ try:
             from agente import analitica
             print("[v2] Pre-cargando data de Excels en background…")
             analitica.cargar_data()
+            _data_ready = True
             print("[v2] Data cacheada OK, dashboard listo para servir rápido")
         except Exception as e:
+            _data_ready = True  # marcar como ready igualmente para no bloquear para siempre
             print(f"[v2] Pre-warm falló (se cargará en la primera petición): {e}")
     threading.Thread(target=_prewarm, daemon=True).start()
 except Exception as e:
+    _data_ready = True  # sin blueprint, no hay pre-warm que esperar
     print(f"[v2] Blueprint gerencial NO registrado: {e}")
 
 
