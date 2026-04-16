@@ -1218,8 +1218,9 @@ def dashboard():
 # Blueprint Gerencial v2 (dashboard) — Día 3
 # ══════════════════════════════════════════════════════════════
 try:
-    from agente.api_gerencial import bp as bp_gerencial, set_jwt_verifier
+    from agente.api_gerencial import bp as bp_gerencial, set_jwt_verifier, set_anthropic_client
     set_jwt_verifier(verificar_jwt, ROLES)
+    set_anthropic_client(get_anthropic_client)
     app.register_blueprint(bp_gerencial)
     print("[v2] Blueprint gerencial registrado en /api/*")
 

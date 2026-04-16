@@ -20,6 +20,14 @@ import os, json, traceback
 from flask import Blueprint, request, jsonify, send_file
 from . import analitica
 
+# Late-binding del cliente Anthropic (inyectado desde app.py)
+_anthropic_client_fn = None
+
+def set_anthropic_client(fn):
+    """app.py pasa get_anthropic_client() para reusar el singleton."""
+    global _anthropic_client_fn
+    _anthropic_client_fn = fn
+
 bp = Blueprint("gerencial", __name__, url_prefix="/api")
 
 # Late-binding del verificador JWT y del mapa de roles ────────────────────
@@ -344,8 +352,9 @@ def chat_gerencial():
         return jsonify({"error": "Falta 'pregunta'"}), 400
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        if _anthropic_client_fn is None:
+            return jsonify({"error": "Cliente Anthropic no configurado"}), 500
+        client = _anthropic_client_fn()
     except Exception as e:
         return jsonify({"error": f"API key no configurada: {e}"}), 500
 
