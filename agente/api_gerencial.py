@@ -20,13 +20,37 @@ import os, json, traceback
 from flask import Blueprint, request, jsonify, send_file
 from . import analitica
 
-# Late-binding del cliente Anthropic (inyectado desde app.py)
-_anthropic_client_fn = None
+# ── Cliente Anthropic (singleton propio del blueprint) ──
+_anthropic_client = None
+_anthropic_client_fn = None  # fallback: función inyectada desde app.py
 
 def set_anthropic_client(fn):
-    """app.py pasa get_anthropic_client() para reusar el singleton."""
+    """app.py pasa get_anthropic_client() como fallback."""
     global _anthropic_client_fn
     _anthropic_client_fn = fn
+
+def _get_client():
+    """Obtiene el cliente Anthropic, probando múltiples vías."""
+    global _anthropic_client
+    if _anthropic_client is not None:
+        return _anthropic_client
+    # 1) Intentar via función inyectada desde app.py
+    if _anthropic_client_fn:
+        try:
+            c = _anthropic_client_fn()
+            if c:
+                _anthropic_client = c
+                return c
+        except Exception:
+            pass
+    # 2) Crear directamente (SDK auto-detecta ANTHROPIC_API_KEY del env)
+    import anthropic
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if key:
+        _anthropic_client = anthropic.Anthropic(api_key=key)
+    else:
+        _anthropic_client = anthropic.Anthropic()  # intenta default
+    return _anthropic_client
 
 bp = Blueprint("gerencial", __name__, url_prefix="/api")
 
@@ -352,9 +376,7 @@ def chat_gerencial():
         return jsonify({"error": "Falta 'pregunta'"}), 400
 
     try:
-        if _anthropic_client_fn is None:
-            return jsonify({"error": "Cliente Anthropic no configurado"}), 500
-        client = _anthropic_client_fn()
+        client = _get_client()
     except Exception as e:
         return jsonify({"error": f"API key no configurada: {e}"}), 500
 
@@ -370,7 +392,7 @@ def chat_gerencial():
     try:
         for _ in range(max_iterations):
             resp = client.messages.create(
-                model="claude-sonnet-4-5-20241022",
+                model="claude-sonnet-4-5",
                 max_tokens=1024,
                 system=_SYSTEM_GERENCIAL,
                 tools=_TOOLS_GERENCIAL,
