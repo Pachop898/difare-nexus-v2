@@ -811,6 +811,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .fab{position:fixed;bottom:26px;right:26px;background:#0f172a;color:#fff;padding:14px 22px;border-radius:999px;box-shadow:0 10px 24px rgba(15,23,42,.25);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s}
   .fab:hover{transform:translateY(-2px)}
   table{font-variant-numeric:tabular-nums}
+  .qbtn{font-size:12px;padding:6px 14px;border-radius:9px;border:1px solid #e2e8f0;color:#475569;background:#f8fafc;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .qbtn:hover{background:#e2e8f0;color:#0f172a;border-color:#cbd5e1}
+  .prose strong{font-weight:600}
+  .prose em{font-style:italic}
+  #chat-msgs .prose table{font-size:12px}
 </style>
 </head>
 <body class="min-h-screen">
@@ -907,6 +912,35 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </section>
   </div>
 </main>
+
+<!-- Chat Gerencial integrado -->
+<section class="card p-6 mt-6" id="chat-section">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h2 class="text-lg font-semibold">Asistente Gerencial</h2>
+      <p class="text-sm text-slate-500">Pregunta sobre tendencias, inventario, rankings, Pareto o pide exportar a Excel</p>
+    </div>
+    <button onclick="chatClear()" class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1 rounded border border-slate-200 hover:border-slate-400">Limpiar chat</button>
+  </div>
+  <!-- Quick actions -->
+  <div class="flex flex-wrap gap-2 mb-4" id="chat-quick">
+    <button class="qbtn" onclick="chatSend('Dame un resumen general de KPIs y cómo vamos este mes')">Resumen general</button>
+    <button class="qbtn" onclick="chatSend('Muéstrame la tendencia de ventas por marca en farmacias')">Tendencia marcas</button>
+    <button class="qbtn" onclick="chatSend('¿Cuántos días de inventario tenemos? ¿Hay riesgo de desabasto?')">Días inventario</button>
+    <button class="qbtn" onclick="chatSend('¿Cuáles son las farmacias Pareto que concentran el 80% de la venta?')">Pareto 80/20</button>
+    <button class="qbtn" onclick="chatSend('Top 20 farmacias por venta')">Top farmacias</button>
+    <button class="qbtn" onclick="chatSend('Top 10 clientes de distribución')">Top distribución</button>
+  </div>
+  <!-- Messages -->
+  <div id="chat-msgs" class="space-y-3 max-h-[600px] overflow-y-auto mb-4 scroll-smooth" style="min-height:80px"></div>
+  <!-- Input -->
+  <div class="flex gap-3 items-end">
+    <textarea id="chat-input" rows="1" class="flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400" placeholder="Escribe tu pregunta..."></textarea>
+    <button id="chat-send" onclick="chatSendInput()" class="rounded-xl bg-blue-600 text-white px-5 py-3 text-sm font-medium hover:bg-blue-700 transition disabled:opacity-40" disabled>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+    </button>
+  </div>
+</section>
 
 <a href="/" class="fab">
   <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1054,6 +1088,122 @@ cargarRanking("FARMACIAS");
       }}
   });
 })();
+
+// ════════════════════════════════════════════════
+// CHAT GERENCIAL
+// ════════════════════════════════════════════════
+const chatMsgs=document.getElementById("chat-msgs");
+const chatInput=document.getElementById("chat-input");
+const chatSendBtn=document.getElementById("chat-send");
+let chatHistorial=[];
+
+chatInput.addEventListener("input",()=>{
+  chatSendBtn.disabled=!chatInput.value.trim();
+  chatInput.style.height="auto";
+  chatInput.style.height=Math.min(chatInput.scrollHeight,120)+"px";
+});
+chatInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();chatSendInput();}
+});
+
+function chatSendInput(){
+  const t=chatInput.value.trim();
+  if(!t)return;
+  chatInput.value="";chatInput.style.height="auto";chatSendBtn.disabled=true;
+  chatSend(t);
+}
+
+function chatClear(){
+  chatMsgs.innerHTML="";chatHistorial=[];
+}
+
+function addChatBubble(html,role){
+  const d=document.createElement("div");
+  d.className=role==="user"
+    ?"ml-auto max-w-[80%] bg-blue-600 text-white rounded-2xl rounded-br-md px-4 py-3 text-sm"
+    :"max-w-[90%] bg-slate-50 border border-slate-200 rounded-2xl rounded-bl-md px-4 py-3 text-sm prose prose-sm max-w-none";
+  d.innerHTML=html;
+  chatMsgs.appendChild(d);
+  chatMsgs.scrollTop=chatMsgs.scrollHeight;
+  return d;
+}
+
+function renderMarkdown(txt){
+  // Basic markdown: bold, italic, tables, line breaks
+  let h=txt.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // Tables (markdown)
+  const lines=h.split("\n");
+  let inTable=false;
+  const out=[];
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i].trim();
+    if(l.startsWith("|")&&l.endsWith("|")){
+      if(!inTable){out.push('<div class="overflow-x-auto my-2"><table class="text-xs border-collapse w-full">');inTable=true;}
+      // Skip separator rows
+      if(/^\|[\s\-:|]+\|$/.test(l))continue;
+      const cells=l.split("|").filter(c=>c!=="").map(c=>c.trim());
+      const tag=!inTable||out[out.length-1].includes("<thead")?"th":"td";
+      if(i>0&&lines[i-1]&&/^\|[\s\-:|]+\|$/.test(lines[i-1].trim())){
+        // This is body row
+        out.push("<tr>"+cells.map(c=>`<td class="border border-slate-200 px-2 py-1">${c}</td>`).join("")+"</tr>");
+      } else if(inTable && out[out.length-1].includes("<table")){
+        out.push("<thead><tr>"+cells.map(c=>`<th class="border border-slate-200 px-2 py-1 bg-slate-100 font-medium text-left">${c}</th>`).join("")+"</tr></thead><tbody>");
+      } else {
+        out.push("<tr>"+cells.map(c=>`<td class="border border-slate-200 px-2 py-1">${c}</td>`).join("")+"</tr>");
+      }
+    } else {
+      if(inTable){out.push("</tbody></table></div>");inTable=false;}
+      out.push(l);
+    }
+  }
+  if(inTable) out.push("</tbody></table></div>");
+  h=out.join("\n");
+  // Bold, italic, code
+  h=h.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  h=h.replace(/\*(.+?)\*/g,"<em>$1</em>");
+  h=h.replace(/`(.+?)`/g,'<code class="bg-slate-200 px-1 rounded text-xs">$1</code>');
+  // Line breaks
+  h=h.replace(/\n/g,"<br>");
+  return h;
+}
+
+async function chatSend(pregunta){
+  addChatBubble(pregunta.replace(/</g,"&lt;"),"user");
+  chatHistorial.push({role:"user",content:pregunta});
+
+  // Thinking indicator
+  const thinking=addChatBubble('<div class="flex items-center gap-2 text-slate-400"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Analizando datos...</div>',"bot");
+
+  try{
+    const r=await fetch(S+"/api/chat-gerencial",{
+      method:"POST",
+      headers:AH,
+      body:JSON.stringify({pregunta,historial:chatHistorial.slice(-10)})
+    });
+    if(r.status===401){logout();return;}
+    const d=await r.json();
+    thinking.remove();
+    if(d.error){
+      addChatBubble('<span class="text-red-500">Error: '+d.error+'</span>',"bot");
+      return;
+    }
+    const html=renderMarkdown(d.respuesta||"Sin respuesta");
+    // Si hay archivos para descargar
+    let filesHtml="";
+    if(d.archivos&&d.archivos.length){
+      filesHtml='<div class="mt-3 flex flex-wrap gap-2">'+d.archivos.map(f=>
+        `<a href="${S}/api/descargar/${encodeURIComponent(f)}" class="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 border border-green-200 text-green-700 text-xs font-medium rounded-lg hover:bg-green-100 transition" download>
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          ${f}</a>`
+      ).join("")+"</div>";
+    }
+    addChatBubble(html+filesHtml,"bot");
+    chatHistorial.push({role:"assistant",content:d.respuesta});
+  }catch(e){
+    thinking.remove();
+    addChatBubble('<span class="text-red-500">Error de conexión: '+e.message+'</span>',"bot");
+  }
+}
 </script>
 </body>
 </html>"""
