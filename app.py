@@ -1294,7 +1294,11 @@ function _qs(){
   return params.length?"?"+params.join("&"):"";
 }
 
-async function aplicarFiltros(){
+// Debounce: espera 300ms después del último cambio de filtro antes de llamar APIs
+let _filtroTimer=null;
+let _filtroLoading=false;
+function aplicarFiltros(){
+  // Actualizar UI inmediatamente (labels, botón limpiar)
   const btn=document.getElementById("filtro-reset");
   const lbl=document.getElementById("filtro-label");
   const hayFiltro=_filtroMarca||_filtroCanal||_filtroGrupos.length||_filtroProductos.length;
@@ -1310,7 +1314,16 @@ async function aplicarFiltros(){
   // Sync dist filter too
   const distSel=document.getElementById("dist-marca-filter");
   if(distSel){distSel.value=_filtroMarca||"";}
-  await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+  // Debounce: si hay un timer pendiente, cancelarlo
+  if(_filtroTimer)clearTimeout(_filtroTimer);
+  _filtroTimer=setTimeout(()=>_ejecutarFiltros(),300);
+}
+async function _ejecutarFiltros(){
+  if(_filtroLoading)return; // evitar requests simultáneos
+  _filtroLoading=true;
+  try{
+    await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+  }finally{_filtroLoading=false;}
 }
 
 // ── Funciones de carga individuales (reutilizables con filtros) ──
