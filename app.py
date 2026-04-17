@@ -814,8 +814,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .row:hover{background:rgba(46,117,182,0.08)}
   .spinner{border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s}
+  .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s;z-index:50;touch-action:none}
   .fab:hover{transform:translateY(-2px);border-color:var(--gold)}
+  @media(max-width:768px){.fab{padding:10px 14px;font-size:12px;gap:6px;bottom:80px;right:14px}.fab svg{width:14px;height:14px}}
   table{font-variant-numeric:tabular-nums;color:var(--white)}
   /* Dashboard table rows */
   .dash-table th{color:var(--gold);background:var(--blue);border-bottom:1px solid var(--border);font-weight:500;font-size:12px}
@@ -883,16 +884,23 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="card p-5">
       <div class="text-xs kpi-label">Venta Total</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-total">—</div>
-      <div class="text-xs kpi-sub mt-1">Farmacias + Distribución</div>
+      <div class="text-xs kpi-sub mt-1">Acumulado 2026</div>
+      <div class="text-xs mt-0.5" style="color:var(--muted);font-size:10px" id="kpi-total-sub">—</div>
     </div>
     <div class="card p-5">
       <div class="text-xs kpi-label">Farmacias</div>
-      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-farm">—</div>
+      <div class="flex items-baseline gap-2 mt-1">
+        <div class="kpi-val text-2xl font-semibold" id="kpi-farm">—</div>
+        <span class="text-xs font-medium" style="color:var(--gold);opacity:0.7" id="kpi-farm-pct"></span>
+      </div>
       <div class="text-xs kpi-sub mt-1">Canal directo</div>
     </div>
     <div class="card p-5">
       <div class="text-xs kpi-label">Distribución</div>
-      <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-dist">—</div>
+      <div class="flex items-baseline gap-2 mt-1">
+        <div class="kpi-val text-2xl font-semibold" id="kpi-dist">—</div>
+        <span class="text-xs font-medium" style="color:var(--gold);opacity:0.7" id="kpi-dist-pct"></span>
+      </div>
       <div class="text-xs kpi-sub mt-1">Distribución Difare</div>
     </div>
     <div class="card p-5">
@@ -922,13 +930,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
         <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
       </div>
-      <div class="mb-3">
+      <div class="mb-3" style="display:flex;gap:10px;flex-wrap:wrap">
         <a id="btn-tp-excel" href="#" onclick="descargarTPExcel(event)"
            style="display:inline-flex;align-items:center;gap:6px;background:var(--gold);color:var(--navy);padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;transition:opacity .2s"
            onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Descargar Detalle Excel
+          Descargar Excel
         </a>
+        <button onclick="abrirTPFullscreen()"
+           style="display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--gold);padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--gold);cursor:pointer;transition:opacity .2s"
+           onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+          Ampliar tabla
+        </button>
       </div>
       <div class="overflow-auto max-h-[480px]">
         <table class="w-full text-xs dash-table" id="tp-table">
@@ -973,6 +987,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 </main>
 
+<!-- Fullscreen overlay Tienda Perfecta -->
+<div id="tp-fullscreen" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--navy);overflow:auto;padding:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div>
+      <h2 style="color:var(--gold);font-size:18px;font-weight:700;margin:0">Oportunidades Tienda Perfecta Farmacias</h2>
+      <p style="color:var(--muted);font-size:12px;margin:4px 0 0">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
+    </div>
+    <button onclick="cerrarTPFullscreen()" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer">✕ Cerrar</button>
+  </div>
+  <div id="tp-full-table" style="overflow:auto"></div>
+</div>
+
 <!-- Chat Gerencial integrado -->
 <section class="chat-section p-6 mt-6" id="chat-section">
   <div class="flex items-center justify-between mb-4">
@@ -1004,9 +1030,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 </section>
 
-<a href="/" class="fab">
+<a href="/" class="fab" id="fab-btn">
   <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-  Consultar farmacia
+  <span class="fab-text">Consultar farmacia</span>
 </a>
 
 <script>
@@ -1058,6 +1084,24 @@ async function descargarTPExcel(e){
   finally{btn.innerHTML=orig;btn.style.pointerEvents="";btn.style.opacity="";}
 }
 
+// Fullscreen Tienda Perfecta
+function abrirTPFullscreen(){
+  const src=document.getElementById("tp-table");
+  const dst=document.getElementById("tp-full-table");
+  dst.innerHTML=src.outerHTML;
+  // Remove max height constraint and make table bigger
+  const tbl=dst.querySelector("table");
+  if(tbl){tbl.style.fontSize="13px";}
+  const wrapper=dst.querySelector(".overflow-auto");
+  if(wrapper){wrapper.style.maxHeight="none";}
+  document.getElementById("tp-fullscreen").style.display="block";
+  document.body.style.overflow="hidden";
+}
+function cerrarTPFullscreen(){
+  document.getElementById("tp-fullscreen").style.display="none";
+  document.body.style.overflow="";
+}
+
 // Banner de error global
 function mostrarError(msg){
   let b=document.getElementById("err-banner");
@@ -1093,11 +1137,17 @@ async function waitForReady(maxWait=120){
     const d=await api("/api/kpis"); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     document.getElementById("kpi-total").textContent=fmtUSD(d.venta_total);
+    const vtot=d.venta_total||1;
+    const pFarm=Math.round((d.venta_farmacias||0)/vtot*100);
+    const pDist=Math.round((d.venta_distribucion||0)/vtot*100);
     document.getElementById("kpi-farm").textContent=fmtUSD(d.venta_farmacias);
+    document.getElementById("kpi-farm-pct").textContent=`(${pFarm}%)`;
     document.getElementById("kpi-dist").textContent=fmtUSD(d.venta_distribucion);
+    document.getElementById("kpi-dist-pct").textContent=`(${pDist}%)`;
     document.getElementById("kpi-univ").textContent=(d.universo_pdv||0).toLocaleString("es-EC");
     const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
     document.getElementById("kpi-periodo").textContent=periodo;
+    document.getElementById("kpi-total-sub").textContent=`Data hasta día ${d.ultimo_dia_venta} de abril`;
   }catch(e){mostrarError(e.message||e);}
 
   // Venta por canal por mes (barras agrupadas)
@@ -1310,8 +1360,15 @@ function renderMarkdown(txt){
   h=h.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
   h=h.replace(/\*(.+?)\*/g,"<em>$1</em>");
   h=h.replace(/`(.+?)`/g,'<code>$1</code>');
+  // Headers: ## and ###
+  h=h.replace(/^## (.+)$/gm,'<div style="font-size:14px;font-weight:700;color:#C9A84C;margin:6px 0 2px">$1</div>');
+  h=h.replace(/^### (.+)$/gm,'<div style="font-size:13px;font-weight:600;color:#C9A84C;margin:4px 0 2px">$1</div>');
+  // Collapse multiple blank lines to max 1
+  h=h.replace(/\n{3,}/g,"\n\n");
   // Line breaks
   h=h.replace(/\n/g,"<br>");
+  // Remove excessive <br> runs (3+)
+  h=h.replace(/(<br\s*\/?>){3,}/gi,"<br><br>");
   return h;
 }
 
@@ -1352,6 +1409,35 @@ async function chatSend(pregunta){
     addChatBubble('<span class="text-red-500">Error de conexión: '+e.message+'</span>',"bot");
   }
 }
+
+// Draggable FAB for mobile
+(function(){
+  const fab=document.getElementById("fab-btn");if(!fab)return;
+  let sx,sy,ox,oy,dragging=false;
+  fab.addEventListener("touchstart",e=>{
+    const t=e.touches[0];
+    sx=t.clientX;sy=t.clientY;
+    const r=fab.getBoundingClientRect();
+    ox=t.clientX-r.left;oy=t.clientY-r.top;
+    dragging=false;
+  },{passive:true});
+  fab.addEventListener("touchmove",e=>{
+    const t=e.touches[0];
+    if(Math.abs(t.clientX-sx)>8||Math.abs(t.clientY-sy)>8) dragging=true;
+    if(!dragging)return;
+    e.preventDefault();
+    fab.style.position="fixed";
+    fab.style.left=(t.clientX-ox)+"px";
+    fab.style.top=(t.clientY-oy)+"px";
+    fab.style.right="auto";fab.style.bottom="auto";
+  },{passive:false});
+  fab.addEventListener("touchend",e=>{
+    if(dragging){e.preventDefault();}
+  });
+  fab.addEventListener("click",e=>{
+    if(dragging){e.preventDefault();dragging=false;}
+  });
+})();
 </script>
 </body>
 </html>"""
