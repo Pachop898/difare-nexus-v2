@@ -1045,7 +1045,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 </section>
 
-<a href="/" target="_blank" class="fab" id="fab-btn">
+<a href="/?modo=campo" target="_blank" class="fab" id="fab-btn">
   <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   <span class="fab-text">Consultar farmacia</span>
 </a>
@@ -1134,14 +1134,13 @@ async function waitForReady(maxWait=120){
     try{
       const r=await fetch(S+"/api/ready");
       const d=await r.json();
-      if(d.ready){overlay.style.display="none";return true;}
+      if(d.ready){return true;} // overlay se oculta después de cargar todo
     }catch(e){}
     const elapsed=Math.round((Date.now()-t0)/1000);
     if(sub)sub.textContent=`Procesando datos... ${elapsed}s`;
     await new Promise(r=>setTimeout(r,2000));
   }
-  overlay.style.display="none";
-  return true; // proceder de todas formas
+  return true; // proceder de todas formas — overlay se oculta después
 }
 
 // ── Filtro global ──
@@ -1305,8 +1304,15 @@ async function cargarDist(){
 // ── Cargar todo el dashboard ──
 (async()=>{
   await waitForReady();
-  await cargarFiltros();
-  await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+  const overlay=document.getElementById("loading-overlay");
+  const sub=document.getElementById("loading-sub");
+  if(sub)sub.textContent="Cargando dashboard...";
+  try{
+    await cargarFiltros();
+    await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+  }finally{
+    if(overlay)overlay.style.display="none";
+  }
 })(); // fin de la función principal de carga
 
 // Distribución Numérica chart renderer
@@ -1766,6 +1772,8 @@ let posActual=null, esperando=false;
 function AH(){return{"Content-Type":"application/json","Authorization":"Bearer "+TK}}
 
 function routePorRol(){
+  // Si viene con ?modo=campo, no redirigir al dashboard — mostrar vista campo
+  if(new URLSearchParams(window.location.search).get("modo")==="campo") return false;
   if(RL==="admin"||RL==="gerencial"){window.location.href="/dashboard";return true;}
   return false;
 }
