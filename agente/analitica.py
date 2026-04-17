@@ -347,6 +347,7 @@ def dias_inventario(producto: str | None = None) -> dict:
     d = cargar_data()
     bodega = d["bodega"]
     farm_stock = d["farm_stock_ult"]
+    ultimo_dia = max(d["ultimo_dia_venta"], 1)
     dias_mes = d.get("dias_mes", 30) or 30
 
     # ── Venta del SAP (mes actual) ──
@@ -356,13 +357,6 @@ def dias_inventario(producto: str | None = None) -> dict:
     sap_path = gp.detectar_archivo_sap(carpeta)
     if sap_path:
         df_sap = pd.read_excel(sap_path)
-        # ultimo_dia para DOIS: usar el max día REAL del SAP sin filtro >=100 filas
-        # (el filtro es solo para KPIs del dashboard, no para DOIS)
-        try:
-            fechas_sap = df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["DIA"].apply(gp.parsear_fecha_completa)
-            ultimo_dia = int(fechas_sap.dropna().dt.day.max())
-        except Exception:
-            ultimo_dia = max(d["ultimo_dia_venta"], 1)
         if producto:
             df_sap = df_sap[df_sap["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         venta_sap_farm_dist = float(df_sap[df_sap["UNIDAD"].isin(
@@ -370,7 +364,6 @@ def dias_inventario(producto: str | None = None) -> dict:
         venta_sap_farm = float(df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
     else:
         # Fallback: usar df_todos (menos preciso)
-        ultimo_dia = max(d["ultimo_dia_venta"], 1)
         df_todos = d["df_todos"]
         if producto:
             df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
