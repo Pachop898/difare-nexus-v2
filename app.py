@@ -914,40 +914,53 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="relative" style="height:360px"><canvas id="chartCanalMes"></canvas></div>
   </section>
 
-  <!-- Ranking + Pareto -->
-  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-    <section class="card p-6 xl:col-span-2">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-lg font-semibold section-title">Ranking PDV</h2>
-          <p class="text-sm" style="color:var(--muted)" id="ranking-sub">Top 50 farmacias por venta</p>
-        </div>
-        <div class="seg" id="seg-ranking">
-          <button data-v="FARMACIAS" class="active">Top 50 Farmacias</button>
-          <button data-v="DIFARE">Top 20 Distribución</button>
-        </div>
+  <!-- Tienda Perfecta + Distribución Numérica -->
+  <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+    <!-- Oportunidades Tienda Perfecta Farmacias -->
+    <section class="card p-6 xl:col-span-3">
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
+        <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
       </div>
-      <div class="overflow-auto max-h-[420px]">
-        <table class="w-full text-sm">
-          <thead class="text-xs uppercase tracking-wide sticky top-0" style="background:var(--blue);color:var(--gold)">
+      <div class="overflow-auto max-h-[480px]">
+        <table class="w-full text-xs dash-table" id="tp-table">
+          <thead class="sticky top-0" style="background:var(--blue);color:var(--gold)">
             <tr>
-              <th class="text-left px-3 py-2 w-10">#</th>
-              <th class="text-left px-3 py-2">Cliente / PDV</th>
-              <th class="text-left px-3 py-2">Provincia</th>
-              <th class="text-right px-3 py-2">Venta</th>
+              <th class="text-left px-2 py-2">Marca</th>
+              <th class="text-left px-2 py-2">Producto</th>
+              <th class="text-right px-2 py-2">Venta</th>
+              <th class="text-right px-2 py-2">Peso%</th>
+              <th class="text-right px-2 py-2">Acum%</th>
+              <th class="text-center px-2 py-2">PDV</th>
+              <th class="text-center px-2 py-2">Presencia</th>
+              <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2" style="color:#ef4444">Stock=0</th>
+              <th class="text-center px-2 py-2" style="color:#f59e0b">Stock=1</th>
+              <th class="text-center px-2 py-2" style="color:#3b82f6">Stock=2</th>
+              <th class="text-center px-2 py-2" style="color:#8b5cf6">Stock=3</th>
             </tr>
           </thead>
-          <tbody id="ranking-body"><tr><td colspan="4" class="text-center text-slate-400 py-6">Cargando…</td></tr></tbody>
+          <tbody id="tp-body"><tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
 
-    <section class="card p-6">
-      <h2 class="text-lg font-semibold section-title">Pareto 80/20</h2>
-      <p class="text-sm" style="color:var(--muted) mb-3">Farmacias que acumulan el 80% de la venta</p>
-      <div class="text-3xl font-semibold kpi-val" id="pareto-count">—</div>
-      <div class="text-xs text-slate-500 mb-4">PDV en el 80% del total</div>
-      <div class="relative" style="height:240px"><canvas id="chartPareto"></canvas></div>
+    <!-- Distribución Numérica Canal Distribución -->
+    <section class="card p-6 xl:col-span-2">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-lg font-semibold section-title">Distribución Numérica</h2>
+          <p class="text-sm" style="color:var(--muted)">Canal Distribución · Clientes impactados por mes</p>
+        </div>
+      </div>
+      <div class="mb-3">
+        <select id="dist-marca-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;width:100%">
+          <option value="">Todas las marcas</option>
+        </select>
+      </div>
+      <div class="text-2xl font-semibold kpi-val mb-1" id="dist-total">—</div>
+      <div class="text-xs mb-3" style="color:var(--muted)" id="dist-sub">Clientes únicos (RUC) histórico</div>
+      <div class="relative" style="height:280px"><canvas id="chartDistNumerica"></canvas></div>
     </section>
   </div>
 </main>
@@ -1103,53 +1116,101 @@ async function waitForReady(maxWait=120){
     });
   }catch(e){mostrarError(e.message||e);}
 
-  // Ranking PDV
-  cargarRanking("FARMACIAS");
-
-  // Pareto
+  // Tienda Perfecta Farmacias
   try{
-    const d=await api("/api/pareto-pdv"); if(!d) return;
-    document.getElementById("pareto-count").textContent=(d.total_pdv_pareto||0).toLocaleString("es-EC");
-    const filas=(d.filas||[]).slice(0,20);
-    if(!filas.length)return;
-    new Chart(document.getElementById("chartPareto"),{
-      type:"bar",
-      data:{labels:filas.map((f,i)=>"#"+(i+1)),
-        datasets:[
-          {type:"bar",label:"Venta",data:filas.map(f=>f["VENTA NETA RECUPERO"]),backgroundColor:"#2563eb",yAxisID:"y"},
-          {type:"line",label:"% acum",data:filas.map(f=>f.pct_acum),borderColor:"#f59e0b",backgroundColor:"#f59e0b22",tension:.2,yAxisID:"y1",pointRadius:0,borderWidth:2}
-        ]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},
-          tooltip:{callbacks:{
-            title:ctx=>filas[ctx[0].dataIndex].POS||"",
-            label:ctx=>ctx.dataset.label==="Venta"?fmtUSD(ctx.parsed.y):ctx.parsed.y.toFixed(1)+"% acum"
-          }}},
-        scales:{
-          y:{ticks:{callback:v=>fmtShort(v)},grid:{color:"rgba(46,117,182,0.15)"}},
-          y1:{position:"right",min:0,max:100,ticks:{callback:v=>v+"%"},grid:{display:false}},
-          x:{grid:{display:false},ticks:{font:{size:10}}}
-        }}
+    const d=await api("/api/tienda-perfecta"); if(!d) return;
+    if(d.error){mostrarError(d.error);return;}
+    const filas=d.filas||[];
+    const body=document.getElementById("tp-body");
+    if(!filas.length){body.innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
+    body.innerHTML=filas.map(f=>{
+      const v=f.VENTA||f.venta_total||0;
+      const pct=(f.PCT||0).toFixed(1);
+      const acum=(f.PCT_ACUM||0).toFixed(1);
+      const uni=f.UNIVERSO_PDV||0;
+      const pres=f.PDV_PRESENCIA||0;
+      const cob=f.cobertura_pct||0;
+      const s0=f.stock_solo_0||0;
+      const s1=f.stock_solo_1||0;
+      const s2=f.stock_solo_2||0;
+      const s3=f.stock_solo_3||0;
+      return `<tr class="row" style="border-bottom:1px solid var(--border)">
+        <td class="px-2 py-1.5 font-medium" style="color:var(--gold)">${f.MARCA||"—"}</td>
+        <td class="px-2 py-1.5" style="color:var(--white)">${(f.PRODUCTO||"—").substring(0,30)}</td>
+        <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(v)}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${pct}%</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${acum}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${uni}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pres}</td>
+        <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${s0||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#f59e0b">${s1||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${s2||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#8b5cf6">${s3||""}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){mostrarError(e.message||e);}
+
+  // Distribución Numérica — cargar marcas y chart
+  try{
+    const d=await api("/api/dist-numerica-chart"); if(!d) return;
+    if(d.error){mostrarError(d.error);return;}
+    // Poblar select de marcas
+    const sel=document.getElementById("dist-marca-filter");
+    (d.marcas_disponibles||[]).forEach(m=>{
+      const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);
+    });
+    renderDistChart(d);
+    sel.addEventListener("change",async()=>{
+      const marca=sel.value;
+      const d2=await api("/api/dist-numerica-chart?marca="+encodeURIComponent(marca));
+      if(d2) renderDistChart(d2);
     });
   }catch(e){mostrarError(e.message||e);}
 })(); // fin de la función principal de carga
 
-// Ranking PDV (función reutilizable para el segmented control)
-async function cargarRanking(canal){
-  const top=canal==="FARMACIAS"?50:20;
-  const d=await api("/api/ranking-pdv?canal="+canal+"&top="+top); if(!d) return;
-  document.getElementById("ranking-sub").textContent=canal==="FARMACIAS"?"Top 50 farmacias por venta":"Top 20 clientes de distribución";
-  const body=document.getElementById("ranking-body");
-  if(!d.filas||!d.filas.length){body.innerHTML='<tr><td colspan="4" class="text-center text-slate-400 py-6">Sin datos</td></tr>';return;}
-  body.innerHTML=d.filas.map((f,i)=>{
-    const prov=f.PROVINCIA||f.GRUPOCLIENTE||"—";
-    return `<tr class="row" style="border-bottom:1px solid var(--border)"><td class="px-3 py-2" style="color:var(--muted)">${i+1}</td><td class="px-3 py-2 font-medium" style="color:var(--white)">${f.cliente||"—"}</td><td class="px-3 py-2" style="color:var(--muted)">${prov}</td><td class="px-3 py-2 text-right font-medium" style="color:var(--gold)">${fmtUSD(f.venta)}</td></tr>`;
-  }).join("");
+// Distribución Numérica chart renderer
+let _distChart=null;
+function renderDistChart(d){
+  document.getElementById("dist-total").textContent=(d.total_clientes||0).toLocaleString("es-EC");
+  const sub=d.marca_filtro?`Clientes que compraron ${d.marca_filtro}`:"Clientes únicos (RUC) histórico";
+  document.getElementById("dist-sub").textContent=sub;
+  const meses=d.resumen_meses||[];
+  if(!meses.length)return;
+  const nombresMes=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const labels=meses.map(m=>{
+    const parts=m.mes.split("-");
+    return nombresMes[parseInt(parts[1])-1]||m.mes;
+  });
+  const vals=meses.map(m=>m.clientes_atendidos);
+  if(_distChart){_distChart.destroy();}
+  _distChart=new Chart(document.getElementById("chartDistNumerica"),{
+    type:"bar",
+    data:{labels,datasets:[
+      {label:"Clientes impactados",data:vals,backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:48}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          label:ctx=>`${ctx.parsed.y} clientes`,
+          afterLabel:ctx=>{
+            const m=meses[ctx.dataIndex];
+            if(!m)return"";
+            const parts=[];
+            if(m.clientes_nuevos)parts.push(`+${m.clientes_nuevos} nuevos`);
+            if(m.clientes_perdidos)parts.push(`-${m.clientes_perdidos} perdidos`);
+            return parts.join(" · ");
+          }
+        }}
+      },
+      scales:{
+        y:{beginAtZero:true,ticks:{callback:v=>v},grid:{color:"rgba(46,117,182,0.15)"}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
 }
-document.querySelectorAll("#seg-ranking button").forEach(b=>b.addEventListener("click",()=>{
-  document.querySelectorAll("#seg-ranking button").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active"); cargarRanking(b.dataset.v);
-}));
 
 // ════════════════════════════════════════════════
 // CHAT GERENCIAL

@@ -180,6 +180,64 @@ def pareto_pdv():
 
 
 # ══════════════════════════════════════════════════════════════
+# 5) Tienda Perfecta — Pareto con buckets exclusivos de stock
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/tienda-perfecta", methods=["GET"])
+def tienda_perfecta():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        rows = analitica.oportunidad_vectorizacion(top_n=50)
+        # Calcular buckets EXCLUSIVOS:
+        # stock_only_0 = PDV con stock exactamente 0 (no aparecen en último día)
+        # stock_only_1 = PDV con stock=1 (están en <=1 pero NO en =0)
+        # stock_only_2 = PDV con stock=2 (están en <=2 pero NO en <=1)
+        # stock_only_3 = PDV con stock=3 (están en <=3 pero NO en <=2)
+        for r in rows:
+            s0 = r.get("STOCK_0", 0) or 0
+            s1 = r.get("STOCK_1", 0) or 0
+            s2 = r.get("STOCK_2", 0) or 0
+            s3 = r.get("STOCK_3", 0) or 0
+            r["stock_solo_0"] = s0
+            r["stock_solo_1"] = max(s1 - s0, 0)
+            r["stock_solo_2"] = max(s2 - s1, 0)
+            r["stock_solo_3"] = max(s3 - s2, 0)
+            uni = r.get("UNIVERSO_PDV", 0) or 1
+            pres = r.get("PDV_PRESENCIA", 0) or 0
+            r["cobertura_pct"] = round(pres / uni * 100, 1)
+        return jsonify({"filas": rows}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# 6) Distribución Numérica — clientes por mes con filtro marca
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/dist-numerica-chart", methods=["GET"])
+def dist_numerica_chart():
+    auth, err = _autorizar()
+    if err: return err
+    marca = request.args.get("marca", "").strip() or None
+    try:
+        data = analitica.distribucion_numerica(marca=marca, top_n=0)
+        # También devolver lista de marcas disponibles para el filtro
+        d = analitica.cargar_data()
+        df = d["df_todos"]
+        dist = df[df["UNIDAD"] == "DISTRIBUCION DIFARE"]
+        marcas = sorted(dist["MARCA"].dropna().unique().tolist()) if not dist.empty else []
+        return jsonify({
+            "resumen_meses": data.get("resumen_meses", []),
+            "total_clientes": data.get("total_clientes_historico", 0),
+            "marcas_disponibles": marcas,
+            "marca_filtro": marca,
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
 # Util: invalidar cache (admin only)
 # ══════════════════════════════════════════════════════════════
 
