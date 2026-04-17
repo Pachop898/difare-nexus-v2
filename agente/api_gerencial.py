@@ -296,6 +296,12 @@ CONTEXTO DE NEGOCIO:
 - Umbrales DOIS: >30 días = OK, 15-30 = Stock Bajo, <15 = Crítico
 - NO confundir unidades con valores. El inventario se mide en USD, no en unidades físicas.
 - Meses disponibles: Ene-Mar 2026 (cerrados) + Abr 2026 (parcial, data semanal SAP)
+- Canal de venta en FARMACIAS: la columna CANAL segrega la venta por: APP, Call Center, Mostrador, Tienda Virtual, WhatsApp, etc.
+  * Mostrador = canal PRESENCIAL = canal FÍSICO
+  * Todo lo demás = canal NO PRESENCIAL = canal DIGITAL = e-commerce
+  * SÍ tenemos esta data. SIEMPRE usa venta_por_canal_farmacia para estas preguntas.
+- Sinónimos del usuario: "canal digital" = "canal no presencial" = "e-commerce" = "venta online" = "venta en línea"
+- Sinónimos del usuario: "canal físico" = "canal presencial" = "mostrador"
 
 VOCABULARIO CLAVE DEL USUARIO:
 - "Vectorización" u "Oportunidades de vectorización" = se refiere SIEMPRE a FARMACIAS PROPIAS.
@@ -445,6 +451,28 @@ _TOOLS_GERENCIAL = [
         }
     },
     {
+        "name": "venta_por_canal_farmacia",
+        "description": "Analiza la venta en FARMACIAS desglosada por CANAL de venta (columna CANAL en la data). Canales: Mostrador, APP, Call Center, Tienda Virtual, WhatsApp, etc. Clasificación: Mostrador = canal PRESENCIAL / FÍSICO. Todo lo demás = canal NO PRESENCIAL / DIGITAL / e-commerce. Muestra cuánto se vende por cada canal, el split presencial vs no presencial/digital, y la evolución mensual. IMPORTANTE: SIEMPRE usa esta herramienta cuando el usuario mencione CUALQUIERA de estos términos: 'canal digital', 'canal físico', 'canal presencial', 'canal no presencial', 'e-commerce', 'venta online', 'venta digital', 'venta presencial', 'venta por APP', 'mostrador', 'cómo se vende', 'por qué medio se vende', 'canales de venta', 'tipo de venta', 'medio de venta', 'venta en línea'. La data SÍ tiene esta información en la columna CANAL.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "marca": {
+                    "type": "string",
+                    "description": "Marca para filtrar (ej: 'CICATRICURE'). Dejar vacío para analizar todas."
+                },
+                "producto": {
+                    "type": "string",
+                    "description": "Producto específico para filtrar. Dejar vacío para todos."
+                },
+                "mes": {
+                    "type": "integer",
+                    "description": "Mes específico (1-12) para filtrar. Dejar vacío para ver todos los meses."
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "distribucion_numerica",
         "description": "Análisis de distribución numérica del canal DISTRIBUTIVO (DISTRIBUCION DIFARE): clientes atendidos por RUC mes a mes, clientes nuevos vs perdidos, y penetración del portafolio TOP. Usa esta herramienta cuando el usuario pregunta por 'distribución numérica', 'clientes atendidos', 'cuántos RUCs compraron', o 'penetración del portafolio'.",
         "input_schema": {
@@ -541,6 +569,14 @@ def _ejecutar_tool(name: str, inp: dict) -> str:
                 "total_productos": len(data),
                 "productos": data,
             }, default=str, ensure_ascii=False)
+
+        elif name == "venta_por_canal_farmacia":
+            data = analitica.venta_por_canal_farmacia(
+                marca=inp.get("marca") or None,
+                producto=inp.get("producto") or None,
+                mes=inp.get("mes") or None,
+            )
+            return json.dumps(data, default=str, ensure_ascii=False)
 
         elif name == "distribucion_numerica":
             data = analitica.distribucion_numerica(

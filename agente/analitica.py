@@ -837,6 +837,93 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "") -> s
 # 7) Distribución numérica — clientes atendidos por RUC (canal distributivo)
 # ══════════════════════════════════════════════════════════════
 
+def venta_por_canal_farmacia(marca: str | None = None,
+                             producto: str | None = None,
+                             mes: int | None = None) -> dict:
+    """
+    Analiza la venta en FARMACIAS desglosada por CANAL (columna 'CANAL'):
+    APP, Call Center, Mostrador, Tienda Virtual, etc.
+
+    Clasificación de negocio:
+    - Mostrador = Canal PRESENCIAL
+    - Todo lo demás (APP, Call Center, Tienda Virtual, etc.) = Canal NO PRESENCIAL
+
+    Devuelve:
+    - Desglose por canal con venta, % participación
+    - Resumen presencial vs no presencial
+    - Evolución mensual si hay varios meses
+    """
+    d = cargar_data()
+    df = d["df_todos"]
+
+    # Solo farmacias
+    farm = df[df["UNIDAD"] == "FARMACIAS"].copy()
+    if farm.empty:
+        return {"error": "No hay datos de farmacias"}
+
+    # Verificar que exista columna CANAL
+    if "CANAL" not in farm.columns:
+        return {"error": "No se encontró la columna CANAL en los datos"}
+
+    # Filtros opcionales
+    if marca:
+        farm = farm[farm["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+    if producto:
+        farm = farm[farm["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+    if mes:
+        farm["_mes_num"] = farm["MES"].apply(_mes_num)
+        farm = farm[farm["_mes_num"] == mes]
+
+    if farm.empty:
+        return {"error": "No hay datos con los filtros aplicados"}
+
+    venta_col = "VENTA NETA RECUPERO"
+    total_venta = float(farm[venta_col].sum())
+
+    # ── Desglose por canal ──
+    por_canal = (farm.groupby("CANAL", dropna=False)[venta_col]
+                     .sum().reset_index()
+                     .rename(columns={venta_col: "venta"})
+                     .sort_values("venta", ascending=False))
+    por_canal["pct"] = (por_canal["venta"] / total_venta * 100).round(1)
+    canales = por_canal.to_dict(orient="records")
+
+    # ── Presencial vs No presencial ──
+    venta_presencial = float(farm[farm["CANAL"].astype(str).str.upper().str.strip() == "MOSTRADOR"][venta_col].sum())
+    venta_no_presencial = total_venta - venta_presencial
+    pct_presencial = round(venta_presencial / total_venta * 100, 1) if total_venta > 0 else 0
+    pct_no_presencial = round(100 - pct_presencial, 1)
+
+    resumen_tipo = {
+        "presencial_mostrador": round(venta_presencial, 2),
+        "no_presencial_otros": round(venta_no_presencial, 2),
+        "pct_presencial": pct_presencial,
+        "pct_no_presencial": pct_no_presencial,
+        "total": round(total_venta, 2),
+    }
+
+    # ── Evolución mensual (presencial vs no presencial) ──
+    farm["_tipo_canal"] = farm["CANAL"].astype(str).str.upper().str.strip().apply(
+        lambda x: "Presencial" if x == "MOSTRADOR" else "No presencial"
+    )
+    farm["_mes_n"] = farm["MES"].apply(_mes_num)
+    evol = (farm.groupby(["_mes_n", "_tipo_canal"], dropna=True)[venta_col]
+                .sum().reset_index()
+                .rename(columns={venta_col: "venta", "_mes_n": "mes", "_tipo_canal": "tipo"}))
+    evol = evol.sort_values(["mes", "tipo"])
+    evolucion = evol.to_dict(orient="records")
+
+    return {
+        "marca_filtro": marca,
+        "producto_filtro": producto,
+        "mes_filtro": mes,
+        "total_venta_farmacias": round(total_venta, 2),
+        "canales": canales,
+        "resumen_presencial_vs_no": resumen_tipo,
+        "evolucion_mensual": evolucion,
+    }
+
+
 def distribucion_numerica(marca: str | None = None,
                           top_n: int = 20) -> dict:
     """
