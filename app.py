@@ -1330,27 +1330,18 @@ function addChatBubble(html,role){
 
 function renderMarkdown(txt){
   let h=txt.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  // Remove blank lines aggressively (collapse 2+ to 1)
-  h=h.replace(/\n{2,}/g,"\n\n");
-  // Tables (markdown)
   const lines=h.split("\n");
   let inTable=false;
   const out=[];
   for(let i=0;i<lines.length;i++){
     const l=lines[i].trim();
-    // Skip empty lines right before/after tables and headers
-    if(l===""){
-      // Don't add blank line if previous was a header/table or next is a table
-      const prev=out.length?out[out.length-1]:"";
-      if(prev.includes("</div>")||prev.includes("</table>")||prev===""||prev.startsWith("<div")) continue;
-      const next=(i+1<lines.length)?lines[i+1].trim():"";
-      if(next.startsWith("|")||next.startsWith("##")||next.startsWith("---")) continue;
-      out.push(l);continue;
-    }
+    // Skip ALL empty lines — spacing is handled by CSS margins on blocks
+    if(l==="") continue;
     // HR dividers
-    if(/^-{3,}$/.test(l)){out.push('<hr style="border-color:rgba(46,117,182,0.3);margin:6px 0">');continue;}
+    if(/^-{3,}$/.test(l)){out.push('<hr style="border-color:rgba(46,117,182,0.3);margin:8px 0">');continue;}
+    // Table rows
     if(l.startsWith("|")&&l.endsWith("|")){
-      if(!inTable){out.push('<div class="overflow-x-auto" style="margin:4px 0"><table class="text-xs border-collapse w-full">');inTable=true;}
+      if(!inTable){out.push('<div class="overflow-x-auto" style="margin:6px 0"><table class="text-xs border-collapse w-full">');inTable=true;}
       if(/^\|[\s\-:|]+\|$/.test(l))continue;
       const cells=l.split("|").filter(c=>c!=="").map(c=>c.trim());
       if(i>0&&lines[i-1]&&/^\|[\s\-:|]+\|$/.test(lines[i-1].trim())){
@@ -1362,9 +1353,9 @@ function renderMarkdown(txt){
       }
     } else {
       if(inTable){out.push("</tbody></table></div>");inTable=false;}
-      // Headers
-      if(l.startsWith("## ")){out.push('<div style="font-size:14px;font-weight:700;color:#C9A84C;margin:8px 0 4px">'+l.slice(3)+'</div>');continue;}
-      if(l.startsWith("### ")){out.push('<div style="font-size:13px;font-weight:600;color:#C9A84C;margin:6px 0 2px">'+l.slice(4)+'</div>');continue;}
+      // Headers ## and ###
+      if(l.startsWith("## ")){out.push('<div style="font-size:14px;font-weight:700;color:#C9A84C;margin:10px 0 4px">'+l.slice(3)+'</div>');continue;}
+      if(l.startsWith("### ")){out.push('<div style="font-size:13px;font-weight:600;color:#C9A84C;margin:8px 0 3px">'+l.slice(4)+'</div>');continue;}
       out.push(l);
     }
   }
@@ -1374,12 +1365,10 @@ function renderMarkdown(txt){
   h=h.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
   h=h.replace(/\*(.+?)\*/g,"<em>$1</em>");
   h=h.replace(/`(.+?)`/g,'<code>$1</code>');
-  // Line breaks — but not after block elements
+  // Line breaks — but not adjacent to block elements
   h=h.replace(/\n/g,"<br>");
-  // Clean up br after/before block elements
   h=h.replace(/<br>(<div|<hr|<table)/gi,"$1");
   h=h.replace(/(<\/div>|<\/table>)<br>/gi,"$1");
-  // Remove runs of 2+ br
   h=h.replace(/(<br\s*\/?>){2,}/gi,"<br>");
   return h;
 }

@@ -333,37 +333,62 @@ def pareto_pdv() -> list[dict]:
 
 def dias_inventario(producto: str | None = None) -> dict:
     """
-    DOIS (Días de Inventario) = Stock_Valorizado / Venta_Diaria_Promedio.
-    Cálculo VALORIZADO (en USD), NO en unidades.
-    DOIS Bodega = Stock_Bodega_Val / (Venta_Farmacias_Mes / dias_transcurridos)
-    DOIS PDV    = Stock_PDV_Val / (Venta_Farmacias_Mes / dias_transcurridos)
-    DOIS Total  = Stock_Total_Val / (Venta_Farmacias_Mes / dias_transcurridos)
+    DOIS (Días de Inventario) — fórmula idéntica al reporte PDF de agente-excel.
+
+    DOIS = Stock_Valorizado / Venta_Diaria_SAP
+    Donde Venta_Diaria_SAP = Venta del archivo SAP (mes actual) / dias transcurridos.
+
+    Importante:
+    - Bodega DOIS: stock bodega / venta diaria (FARMACIAS + DISTRIBUCIÓN)
+    - PDV DOIS:    stock PDV   / venta diaria (solo FARMACIAS)
+    - Total DOIS:  stock total / venta diaria (FARMACIAS + DISTRIBUCIÓN)
+    - Usa SOLO venta del SAP (mes actual), NO la venta acumulada de todos los meses
     """
     d = cargar_data()
     bodega = d["bodega"]
     farm_stock = d["farm_stock_ult"]
-    df_todos = d["df_todos"]
     ultimo_dia = max(d["ultimo_dia_venta"], 1)
+    dias_mes = d.get("dias_mes", 30) or 30
+
+    # ── Venta del SAP (mes actual) ──
+    # Cargar SAP directamente para obtener venta del mes en curso
+    # (df_todos mezcla Ene-Mar + Abr, daría DOIS artificialmente bajo)
+    carpeta = _carpeta()
+    sap_path = gp.detectar_archivo_sap(carpeta)
+    if sap_path:
+        df_sap = pd.read_excel(sap_path)
+        if producto:
+            df_sap = df_sap[df_sap["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        venta_sap_farm_dist = float(df_sap[df_sap["UNIDAD"].isin(
+            ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
+        venta_sap_farm = float(df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
+    else:
+        # Fallback: usar df_todos pero solo mes actual (menos preciso)
+        df_todos = d["df_todos"]
+        if producto:
+            df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        venta_sap_farm_dist = float(df_todos[df_todos["UNIDAD"].isin(
+            ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
+        venta_sap_farm = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
 
     if producto:
         bodega = bodega[bodega["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         farm_stock = farm_stock[farm_stock["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
-        df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
 
-    # Stock VALORIZADO (USD) — no unidades
+    # Stock VALORIZADO (USD)
     stock_bodega_val = float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
     stock_pdv_val = float(farm_stock["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in farm_stock.columns else 0
     stock_total_val = stock_bodega_val + stock_pdv_val
 
-    # Venta del mes actual en farmacias (valorizada)
-    farm = df_todos[df_todos["UNIDAD"] == "FARMACIAS"]
-    venta_mes = float(farm["VENTA NETA RECUPERO"].sum())
-    venta_diaria = venta_mes / ultimo_dia if ultimo_dia else 0
+    # Venta diaria del SAP (mes actual)
+    venta_diaria_farm_dist = venta_sap_farm_dist / ultimo_dia if ultimo_dia else 0
+    venta_diaria_farm = venta_sap_farm / ultimo_dia if ultimo_dia else 0
 
-    # DOIS = Stock Valorizado / Venta Diaria Promedio
-    dois_bodega = round(stock_bodega_val / venta_diaria, 1) if venta_diaria else None
-    dois_pdv = round(stock_pdv_val / venta_diaria, 1) if venta_diaria else None
-    dois_total = round(stock_total_val / venta_diaria, 1) if venta_diaria else None
+    # DOIS = Stock Valorizado / Venta Diaria
+    # Bodega y Total usan venta Farm+Dist; PDV usa solo Farm
+    dois_bodega = round(stock_bodega_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
+    dois_pdv = round(stock_pdv_val / venta_diaria_farm, 1) if venta_diaria_farm > 0 else None
+    dois_total = round(stock_total_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
 
     # Clasificación: >30 días = OK, 15-30 = bajo, <15 = crítico
     if dois_total is not None:
@@ -380,15 +405,16 @@ def dias_inventario(producto: str | None = None) -> dict:
         "stock_bodega_valorizado": round(stock_bodega_val, 2),
         "stock_pdv_valorizado": round(stock_pdv_val, 2),
         "stock_total_valorizado": round(stock_total_val, 2),
-        "venta_diaria_promedio_usd": round(venta_diaria, 2),
+        "venta_sap_farm_dist": round(venta_sap_farm_dist, 2),
+        "venta_sap_farm": round(venta_sap_farm, 2),
+        "venta_diaria_farm_dist": round(venta_diaria_farm_dist, 2),
+        "venta_diaria_farm": round(venta_diaria_farm, 2),
         "dias_transcurridos": ultimo_dia,
+        "dias_mes": dias_mes,
         "dois_bodega": dois_bodega,
         "dois_pdv": dois_pdv,
         "dois_total": dois_total,
         "estado_inventario": estado,
-        "dias_seguridad_minimo": DIAS_INV_SEGURIDAD,
-        "lead_time_dias": LEAD_TIME_DIAS,
-        "buffer_dias": BUFFER_DIAS,
     }
 
 
