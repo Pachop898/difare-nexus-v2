@@ -176,19 +176,30 @@ def invalidar_cache():
 # KPIs principales (alimenta /api/kpis)
 # ══════════════════════════════════════════════════════════════
 
-def kpis_dashboard(marca: str | None = None) -> dict:
+def _aplicar_filtros_df(df, marca=None, canal=None, grupos=None, productos=None):
+    """Aplica filtros comunes a un DataFrame de ventas."""
+    if marca:
+        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+    if canal:
+        df = df[df["UNIDAD"] == canal]
+    if grupos and "GRUPOPDV" in df.columns:
+        df = df[df["GRUPOPDV"].isin(grupos)]
+    if productos:
+        df = df[df["PRODUCTO"].isin(productos)]
+    return df
+
+
+def kpis_dashboard(marca: str | None = None, canal: str | None = None,
+                   grupos: list | None = None, productos: list | None = None) -> dict:
     d = cargar_data()
     df = d["df_todos"]
     if df.empty:
         return {"error": "no hay data"}
 
-    if marca:
-        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+    df = _aplicar_filtros_df(df, marca=marca, canal=canal, grupos=grupos, productos=productos)
 
     farm = df[df["UNIDAD"] == "FARMACIAS"]
-    # 'DIFARE S.A.' = bodega · 'DISTRIBUCION DIFARE' = canal distributivo
     dist = df[df["UNIDAD"] == "DISTRIBUCION DIFARE"]
-    bodega = df[df["UNIDAD"] == "DIFARE S.A."]
 
     venta_farm = float(farm["VENTA NETA RECUPERO"].sum())
     venta_dist = float(dist["VENTA NETA RECUPERO"].sum())
@@ -206,8 +217,8 @@ def kpis_dashboard(marca: str | None = None) -> dict:
     }
 
 
-def filtros_disponibles() -> dict:
-    """Retorna las opciones de filtros disponibles: marcas, provincias, grupos."""
+def filtros_disponibles(marca: str | None = None) -> dict:
+    """Retorna las opciones de filtros disponibles: marcas, grupos, productos (cascadeados por marca)."""
     d = cargar_data()
     df = d["df_todos"]
     farm_todo = d.get("farm_todo")
@@ -215,19 +226,29 @@ def filtros_disponibles() -> dict:
     # Marcas de todos los datos
     marcas = sorted(df["MARCA"].dropna().unique().tolist()) if "MARCA" in df.columns else []
 
-    # Provincias y grupos desde farm_todo (farmacias)
-    provincias = []
+    # Canales (unidades de negocio)
+    canales = []
+    if "UNIDAD" in df.columns:
+        canales = [u for u in ["FARMACIAS", "DISTRIBUCION DIFARE"]
+                   if u in df["UNIDAD"].unique()]
+
+    # Grupos PDV desde farm_todo (farmacias)
     grupos = []
     if farm_todo is not None and not farm_todo.empty:
-        if "PROVINCIA" in farm_todo.columns:
-            provincias = sorted(farm_todo["PROVINCIA"].dropna().unique().tolist())
         if "GRUPOPDV" in farm_todo.columns:
             grupos = sorted(farm_todo["GRUPOPDV"].dropna().unique().tolist())
 
+    # Productos — cascadeados por marca si se pasa
+    df_prod = df
+    if marca:
+        df_prod = df_prod[df_prod["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+    productos = sorted(df_prod["PRODUCTO"].dropna().unique().tolist()) if "PRODUCTO" in df_prod.columns else []
+
     return {
         "marcas": marcas,
-        "provincias": provincias,
+        "canales": canales,
         "grupos": grupos,
+        "productos": productos,
     }
 
 
@@ -274,14 +295,11 @@ def _mes_num(mes_raw) -> int | None:
         return None
 
 
-def venta_por_canal_mes(marca: str | None = None) -> list[dict]:
+def venta_por_canal_mes(marca: str | None = None, canal: str | None = None,
+                        grupos: list | None = None, productos: list | None = None) -> list[dict]:
     """
     Devuelve la venta mensual desglosada por canal.
-    Para el mes en curso (incompleto) añade campos de proyección:
-      - proyectado=True
-      - farmacias_proy, distribucion_proy, total_proy (estimados fin-de-mes)
-      - ultimo_dia / dias_mes para contexto
-    [{mes, farmacias, distribucion, total, ...}, ...] ordenado por mes ascendente.
+    Para el mes en curso (incompleto) añade campos de proyección.
     """
     d = cargar_data()
     df = d["df_todos"]
@@ -289,10 +307,8 @@ def venta_por_canal_mes(marca: str | None = None) -> list[dict]:
         return []
     # Solo canales de venta real (excluye 'DIFARE S.A.' que es bodega)
     df = df[df["UNIDAD"].isin(["FARMACIAS", "DISTRIBUCION DIFARE"])]
+    df = _aplicar_filtros_df(df, marca=marca, canal=canal, grupos=grupos, productos=productos)
 
-    # Filtrar por marca si aplica
-    if marca:
-        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
     g = (df.groupby(["MES", "UNIDAD"], dropna=True)["VENTA NETA RECUPERO"]
            .sum().reset_index())
     piv = g.pivot(index="MES", columns="UNIDAD", values="VENTA NETA RECUPERO").fillna(0)

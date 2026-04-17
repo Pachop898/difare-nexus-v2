@@ -85,13 +85,27 @@ def _autorizar(roles_permitidos=("admin", "gerencial")):
 # 1) KPIs cabecera del dashboard
 # ══════════════════════════════════════════════════════════════
 
+def _parse_filtros():
+    """Extrae filtros comunes de los query params."""
+    marca = request.args.get("marca", "").strip() or None
+    canal = request.args.get("canal", "").strip() or None
+    grupos = request.args.getlist("grupo") or None
+    productos = request.args.getlist("producto") or None
+    if grupos and grupos == [""]:
+        grupos = None
+    if productos and productos == [""]:
+        productos = None
+    return marca, canal, grupos, productos
+
+
 @bp.route("/kpis", methods=["GET"])
 def kpis():
     auth, err = _autorizar()
     if err: return err
     try:
-        marca = request.args.get("marca", "").strip() or None
-        return jsonify(analitica.kpis_dashboard(marca=marca)), 200
+        marca, canal, grupos, productos = _parse_filtros()
+        return jsonify(analitica.kpis_dashboard(
+            marca=marca, canal=canal, grupos=grupos, productos=productos)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -101,7 +115,8 @@ def filtros():
     auth, err = _autorizar()
     if err: return err
     try:
-        return jsonify(analitica.filtros_disponibles()), 200
+        marca = request.args.get("marca", "").strip() or None
+        return jsonify(analitica.filtros_disponibles(marca=marca)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -141,8 +156,9 @@ def venta_canal_mes():
     auth, err = _autorizar()
     if err: return err
     try:
-        marca = request.args.get("marca", "").strip() or None
-        return jsonify({"filas": analitica.venta_por_canal_mes(marca=marca)}), 200
+        marca, canal, grupos, productos = _parse_filtros()
+        return jsonify({"filas": analitica.venta_por_canal_mes(
+            marca=marca, canal=canal, grupos=grupos, productos=productos)}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -202,7 +218,7 @@ def tienda_perfecta():
     auth, err = _autorizar()
     if err: return err
     try:
-        marca = request.args.get("marca", "").strip() or None
+        marca, canal, grupos, productos = _parse_filtros()
         rows = analitica.oportunidad_vectorizacion(producto=marca, top_n=50)
         # Calcular buckets EXCLUSIVOS:
         # stock_only_0 = PDV con stock exactamente 0 (no aparecen en último día)

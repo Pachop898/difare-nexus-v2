@@ -883,12 +883,48 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 
   <!-- Filtros globales -->
+  <style>
+    .ms-wrap{position:relative;display:inline-block;min-width:170px}
+    .ms-btn{background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px}
+    .ms-btn:hover{border-color:var(--gold)}
+    .ms-btn .ms-arrow{font-size:10px;opacity:.6}
+    .ms-drop{display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+    .ms-drop.open{display:block}
+    .ms-drop label{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:13px;color:var(--white);cursor:pointer;transition:background .15s}
+    .ms-drop label:hover{background:rgba(201,168,76,.1)}
+    .ms-drop input[type=checkbox]{accent-color:var(--gold);width:15px;height:15px}
+    .ms-badge{display:inline-block;background:var(--gold);color:var(--navy);font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:4px}
+  </style>
   <section class="card p-4" id="filtros-bar">
     <div class="flex flex-wrap items-center gap-3">
       <span class="text-xs font-semibold" style="color:var(--gold);text-transform:uppercase;letter-spacing:0.05em">Filtros</span>
+
+      <!-- Marca (single select) -->
       <select id="filtro-marca" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
         <option value="">Todas las marcas</option>
       </select>
+
+      <!-- Canal (single select: Farmacias / Distribución) -->
+      <select id="filtro-canal" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
+        <option value="">Todos los canales</option>
+      </select>
+
+      <!-- Grupo PDV (multi-select checkboxes) -->
+      <div class="ms-wrap" id="ms-grupo-wrap">
+        <button type="button" class="ms-btn" id="ms-grupo-btn" onclick="toggleMS('grupo')">
+          <span id="ms-grupo-label">Todos los grupos</span><span class="ms-arrow">▼</span>
+        </button>
+        <div class="ms-drop" id="ms-grupo-drop"></div>
+      </div>
+
+      <!-- Producto (multi-select checkboxes, cascaded by marca) -->
+      <div class="ms-wrap" id="ms-producto-wrap">
+        <button type="button" class="ms-btn" id="ms-producto-btn" onclick="toggleMS('producto')">
+          <span id="ms-producto-label">Todos los productos</span><span class="ms-arrow">▼</span>
+        </button>
+        <div class="ms-drop" id="ms-producto-drop"></div>
+      </div>
+
       <button id="filtro-reset" onclick="resetFiltros()" style="display:none;font-size:12px;color:var(--gold);border:1px solid rgba(201,168,76,0.3);background:transparent;padding:5px 14px;border-radius:8px;cursor:pointer">✕ Limpiar filtros</button>
       <span id="filtro-label" class="text-xs" style="color:var(--muted);margin-left:auto"></span>
     </div>
@@ -1143,29 +1179,134 @@ async function waitForReady(maxWait=120){
   return true; // proceder de todas formas — overlay se oculta después
 }
 
-// ── Filtro global ──
+// ── Filtro global (marca, canal, grupo multi, producto multi) ──
 let _filtroMarca="";
+let _filtroCanal="";
+let _filtroGrupos=[];   // array de strings
+let _filtroProductos=[]; // array de strings
+
+// Multi-select helpers
+function toggleMS(name){
+  const drop=document.getElementById("ms-"+name+"-drop");
+  // Close other dropdowns first
+  document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
+  drop.classList.toggle("open");
+}
+// Close dropdowns when clicking outside
+document.addEventListener("click",e=>{
+  if(!e.target.closest(".ms-wrap")){
+    document.querySelectorAll(".ms-drop.open").forEach(d=>d.classList.remove("open"));
+  }
+});
+
+function _poblarMS(containerId, items, labelId, defaultLabel, onChange){
+  const drop=document.getElementById(containerId);
+  drop.innerHTML="";
+  items.forEach(item=>{
+    const lbl=document.createElement("label");
+    const cb=document.createElement("input");
+    cb.type="checkbox";cb.value=item;
+    cb.addEventListener("change",onChange);
+    const txt=document.createTextNode(item);
+    lbl.appendChild(cb);lbl.appendChild(txt);
+    drop.appendChild(lbl);
+  });
+}
+
+function _getChecked(containerId){
+  return Array.from(document.querySelectorAll("#"+containerId+" input:checked")).map(cb=>cb.value);
+}
+
+function _updateMSLabel(containerId, labelId, defaultLabel){
+  const checked=_getChecked(containerId);
+  const lbl=document.getElementById(labelId);
+  if(!checked.length){lbl.textContent=defaultLabel;lbl.innerHTML=defaultLabel;}
+  else if(checked.length===1){lbl.textContent=checked[0].substring(0,20);lbl.innerHTML=checked[0].substring(0,20);}
+  else{lbl.innerHTML=checked[0].substring(0,14)+'<span class="ms-badge">+'+( checked.length-1)+'</span>';}
+}
+
 async function cargarFiltros(){
   try{
     const d=await api("/api/filtros");if(!d)return;
-    const sel=document.getElementById("filtro-marca");
-    (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);});
-    sel.addEventListener("change",()=>{_filtroMarca=sel.value;aplicarFiltros();});
+    // Marca (single select)
+    const selMarca=document.getElementById("filtro-marca");
+    (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selMarca.appendChild(o);});
+    selMarca.addEventListener("change",async()=>{
+      _filtroMarca=selMarca.value;
+      // Cascading: reload productos filtered by marca
+      await _recargarProductos();
+      aplicarFiltros();
+    });
+    // Canal (single select)
+    const selCanal=document.getElementById("filtro-canal");
+    (d.canales||[]).forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;selCanal.appendChild(o);});
+    selCanal.addEventListener("change",()=>{_filtroCanal=selCanal.value;aplicarFiltros();});
+    // Grupo PDV (multi-select)
+    _poblarMS("ms-grupo-drop",d.grupos||[],"ms-grupo-label","Todos los grupos",()=>{
+      _filtroGrupos=_getChecked("ms-grupo-drop");
+      _updateMSLabel("ms-grupo-drop","ms-grupo-label","Todos los grupos");
+      aplicarFiltros();
+    });
+    // Producto (multi-select)
+    _poblarMS("ms-producto-drop",d.productos||[],"ms-producto-label","Todos los productos",()=>{
+      _filtroProductos=_getChecked("ms-producto-drop");
+      _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
+      aplicarFiltros();
+    });
   }catch(e){console.warn("filtros:",e);}
 }
+
+async function _recargarProductos(){
+  try{
+    const url="/api/filtros"+(_filtroMarca?"?marca="+encodeURIComponent(_filtroMarca):"");
+    const d=await api(url);if(!d)return;
+    _filtroProductos=[];
+    _poblarMS("ms-producto-drop",d.productos||[],"ms-producto-label","Todos los productos",()=>{
+      _filtroProductos=_getChecked("ms-producto-drop");
+      _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
+      aplicarFiltros();
+    });
+    _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
+  }catch(e){console.warn("recargar productos:",e);}
+}
+
 function resetFiltros(){
-  _filtroMarca="";
+  _filtroMarca="";_filtroCanal="";_filtroGrupos=[];_filtroProductos=[];
   document.getElementById("filtro-marca").value="";
+  document.getElementById("filtro-canal").value="";
+  // Uncheck all multi-selects
+  document.querySelectorAll("#ms-grupo-drop input, #ms-producto-drop input").forEach(cb=>cb.checked=false);
+  _updateMSLabel("ms-grupo-drop","ms-grupo-label","Todos los grupos");
+  _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
   document.getElementById("filtro-reset").style.display="none";
   document.getElementById("filtro-label").textContent="";
+  // Reload full product list (remove marca cascade)
+  _recargarProductos();
   aplicarFiltros();
 }
-function _qs(){return _filtroMarca?`?marca=${encodeURIComponent(_filtroMarca)}`:""}
+
+function _qs(){
+  const params=[];
+  if(_filtroMarca)params.push("marca="+encodeURIComponent(_filtroMarca));
+  if(_filtroCanal)params.push("canal="+encodeURIComponent(_filtroCanal));
+  _filtroGrupos.forEach(g=>params.push("grupo="+encodeURIComponent(g)));
+  _filtroProductos.forEach(p=>params.push("producto="+encodeURIComponent(p)));
+  return params.length?"?"+params.join("&"):"";
+}
+
 async function aplicarFiltros(){
   const btn=document.getElementById("filtro-reset");
   const lbl=document.getElementById("filtro-label");
-  if(_filtroMarca){btn.style.display="inline-block";lbl.textContent="Mostrando: "+_filtroMarca;}
-  else{btn.style.display="none";lbl.textContent="";}
+  const hayFiltro=_filtroMarca||_filtroCanal||_filtroGrupos.length||_filtroProductos.length;
+  if(hayFiltro){
+    btn.style.display="inline-block";
+    const parts=[];
+    if(_filtroMarca)parts.push(_filtroMarca);
+    if(_filtroCanal)parts.push(_filtroCanal==="DISTRIBUCION DIFARE"?"Distribución":_filtroCanal);
+    if(_filtroGrupos.length)parts.push(_filtroGrupos.length+" grupo(s)");
+    if(_filtroProductos.length)parts.push(_filtroProductos.length+" producto(s)");
+    lbl.textContent="Mostrando: "+parts.join(" · ");
+  }else{btn.style.display="none";lbl.textContent="";}
   // Sync dist filter too
   const distSel=document.getElementById("dist-marca-filter");
   if(distSel){distSel.value=_filtroMarca||"";}
