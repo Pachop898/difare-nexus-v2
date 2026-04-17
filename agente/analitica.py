@@ -173,6 +173,39 @@ def invalidar_cache():
 
 
 # ══════════════════════════════════════════════════════════════
+# Mapeo GRUPOPDV → nombre Genomma (agrupado)
+# ══════════════════════════════════════════════════════════════
+
+_GRUPO_DISPLAY = {
+    "Cafa Mostrador":     "Cruz Azul Mostrador",
+    "Cafi Mostrador":     "Cruz Azul Mostrador",
+    "Cofa Mostrador":     "Cruz Azul Mostrador",
+    "Cafa Autoservicio":  "Cruz Azul Autoservicios",
+    "Cafi Autoservicio":  "Cruz Azul Autoservicios",
+    "Cofa Autoservicio":  "Cruz Azul Autoservicios",
+    # Los demás se muestran tal cual: Pharmacys, Dromayor, etc.
+}
+
+def _grupo_display(raw: str) -> str:
+    """Convierte nombre interno DIFARE → nombre Genomma."""
+    return _GRUPO_DISPLAY.get(raw, raw)
+
+def _grupo_raw_values(display_names: list[str]) -> list[str]:
+    """Dado nombres Genomma, devuelve TODOS los valores raw que matchean."""
+    # Build reverse map: display_name → [raw1, raw2, ...]
+    rev: dict[str, list[str]] = {}
+    for raw, disp in _GRUPO_DISPLAY.items():
+        rev.setdefault(disp, []).append(raw)
+    result = []
+    for name in display_names:
+        if name in rev:
+            result.extend(rev[name])
+        else:
+            result.append(name)  # Pharmacys, Dromayor, etc. → sin mapeo
+    return result
+
+
+# ══════════════════════════════════════════════════════════════
 # KPIs principales (alimenta /api/kpis)
 # ══════════════════════════════════════════════════════════════
 
@@ -183,7 +216,9 @@ def _aplicar_filtros_df(df, marca=None, canal=None, grupos=None, productos=None)
     if canal:
         df = df[df["UNIDAD"] == canal]
     if grupos and "GRUPOPDV" in df.columns:
-        df = df[df["GRUPOPDV"].isin(grupos)]
+        # Expandir nombres Genomma → valores raw DIFARE
+        raw_vals = _grupo_raw_values(grupos)
+        df = df[df["GRUPOPDV"].isin(raw_vals)]
     if productos:
         df = df[df["PRODUCTO"].isin(productos)]
     return df
@@ -232,11 +267,12 @@ def filtros_disponibles(marca: str | None = None) -> dict:
         canales = [u for u in ["FARMACIAS", "DISTRIBUCION DIFARE"]
                    if u in df["UNIDAD"].unique()]
 
-    # Grupos PDV desde farm_todo (farmacias)
+    # Grupos PDV desde farm_todo (farmacias) — mapeados a nombres Genomma
     grupos = []
     if farm_todo is not None and not farm_todo.empty:
         if "GRUPOPDV" in farm_todo.columns:
-            grupos = sorted(farm_todo["GRUPOPDV"].dropna().unique().tolist())
+            raw_grupos = farm_todo["GRUPOPDV"].dropna().unique().tolist()
+            grupos = sorted(set(_grupo_display(g) for g in raw_grupos))
 
     # Productos — cascadeados por marca si se pasa
     df_prod = df

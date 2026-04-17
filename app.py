@@ -1345,9 +1345,6 @@ async function cargarChart(){
       if(f.proyectado) return (nombresMes[f.mes-1]||("M"+f.mes))+" (proy)";
       return nombresMes[f.mes-1]||("M"+f.mes);
     });
-    const dFarm=filas.map(f=>f.proyectado?(f.farmacias_delta||0):0);
-    const dDist=filas.map(f=>f.proyectado?(f.distribucion_delta||0):0);
-    const dTot =filas.map(f=>f.proyectado?(f.total_delta||0):0);
     const actual=filas.find(f=>f.proyectado);
     if(actual){
       const sub=document.getElementById("chart-canal-sub");
@@ -1356,20 +1353,34 @@ async function cargarChart(){
         sub.textContent=`Proyección ${nombresMes[actual.mes-1]}: ${proyTot} (día ${actual.ultimo_dia}/${actual.dias_mes})`;
       }
     }
+    // Determinar qué datasets mostrar según filtro de canal
+    const soloFarm=_filtroCanal==="FARMACIAS";
+    const soloDist=_filtroCanal==="DISTRIBUCION DIFARE";
+    const ambos=!soloFarm&&!soloDist;
+    const datasets=[];
+    if(ambos||soloFarm){
+      datasets.push({label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:48,stack:"farm"});
+      const dFarm=filas.map(f=>f.proyectado?(f.farmacias_delta||0):0);
+      if(dFarm.some(v=>v>0))datasets.push({label:"Farm. proyectado",data:dFarm,backgroundColor:"rgba(37,99,235,0.35)",borderColor:"#2563eb",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:48,stack:"farm"});
+    }
+    if(ambos||soloDist){
+      datasets.push({label:"Distribución",data:filas.map(f=>f.distribucion),backgroundColor:"#10b981",borderRadius:6,maxBarThickness:48,stack:"dist"});
+      const dDist=filas.map(f=>f.proyectado?(f.distribucion_delta||0):0);
+      if(dDist.some(v=>v>0))datasets.push({label:"Dist. proyectado",data:dDist,backgroundColor:"rgba(16,185,129,0.35)",borderColor:"#10b981",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:48,stack:"dist"});
+    }
+    // Solo mostrar Total cuando ambos canales están visibles (si no, es redundante)
+    if(ambos){
+      datasets.push({label:"Total",data:filas.map(f=>f.total),backgroundColor:"#f59e0b",borderRadius:6,maxBarThickness:48,stack:"tot"});
+      const dTot=filas.map(f=>f.proyectado?(f.total_delta||0):0);
+      if(dTot.some(v=>v>0))datasets.push({label:"Total proyectado",data:dTot,backgroundColor:"rgba(245,158,11,0.35)",borderColor:"#f59e0b",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:48,stack:"tot"});
+    }
     if(_canalChart){_canalChart.destroy();}
     _canalChart=new Chart(document.getElementById("chartCanalMes"),{
       type:"bar",
-      data:{labels,datasets:[
-        {label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:42,stack:"farm"},
-        {label:"Farm. proyectado",data:dFarm,backgroundColor:"rgba(37,99,235,0.35)",borderColor:"#2563eb",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"farm"},
-        {label:"Distribución",data:filas.map(f=>f.distribucion),backgroundColor:"#10b981",borderRadius:6,maxBarThickness:42,stack:"dist"},
-        {label:"Dist. proyectado",data:dDist,backgroundColor:"rgba(16,185,129,0.35)",borderColor:"#10b981",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"dist"},
-        {label:"Total",data:filas.map(f=>f.total),backgroundColor:"#f59e0b",borderRadius:6,maxBarThickness:42,stack:"tot"},
-        {label:"Total proyectado",data:dTot,backgroundColor:"rgba(245,158,11,0.35)",borderColor:"#f59e0b",borderWidth:1,borderDash:[4,4],borderRadius:6,maxBarThickness:42,stack:"tot"},
-      ]},
+      data:{labels,datasets},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{
-          legend:{position:"bottom",labels:{boxWidth:12,font:{size:12},padding:12,filter:(it)=>!it.text.includes("proyectado")||it.datasetIndex===5}},
+          legend:{position:"bottom",labels:{boxWidth:12,font:{size:12},padding:12,filter:(it)=>!it.text.includes("proyectado")}},
           tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtUSD(ctx.parsed.y)}}
         },
         scales:{
