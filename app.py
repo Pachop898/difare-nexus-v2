@@ -1241,10 +1241,20 @@ async function cargarFiltros(){
     const selCanal=document.getElementById("filtro-canal");
     (d.canales||[]).forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;selCanal.appendChild(o);});
     selCanal.addEventListener("change",()=>{_filtroCanal=selCanal.value;aplicarFiltros();});
-    // Grupo PDV (multi-select)
+    // Grupo PDV (multi-select) — auto-selecciona canal Farmacias
     _poblarMS("ms-grupo-drop",d.grupos||[],"ms-grupo-label","Todos los grupos",()=>{
       _filtroGrupos=_getChecked("ms-grupo-drop");
       _updateMSLabel("ms-grupo-drop","ms-grupo-label","Todos los grupos");
+      // Grupos son exclusivos de Farmacias → forzar canal
+      if(_filtroGrupos.length&&_filtroCanal!=="FARMACIAS"){
+        _filtroCanal="FARMACIAS";
+        document.getElementById("filtro-canal").value="FARMACIAS";
+      }
+      // Si deseleccionan todos los grupos, liberar canal
+      if(!_filtroGrupos.length&&_filtroCanal==="FARMACIAS"){
+        _filtroCanal="";
+        document.getElementById("filtro-canal").value="";
+      }
       aplicarFiltros();
     });
     // Producto (multi-select)
