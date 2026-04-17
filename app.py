@@ -894,6 +894,21 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .ms-drop label:hover{background:rgba(201,168,76,.1)}
     .ms-drop input[type=checkbox]{accent-color:var(--gold);width:15px;height:15px}
     .ms-badge{display:inline-block;background:var(--gold);color:var(--navy);font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:4px}
+    /* ── Mobile responsive ── */
+    @media(max-width:768px){
+      #filtros-bar .flex{flex-direction:column;align-items:stretch;gap:8px}
+      #filtros-bar select, .ms-btn{width:100%;min-width:0}
+      .ms-wrap{width:100%}
+      #filtro-reset{width:100%;text-align:center}
+      #filtro-label{text-align:center;margin-left:0!important}
+      .kpi-val{font-size:1.4rem!important}
+    }
+    /* ── Sticky columns for TP table ── */
+    .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;z-index:2;background:inherit}
+    .dash-table th.sticky-col-1, .dash-table td.sticky-col-1{left:0;min-width:70px;max-width:90px}
+    .dash-table th.sticky-col-2, .dash-table td.sticky-col-2{left:70px;min-width:110px;max-width:160px;border-right:2px solid var(--border)}
+    .dash-table thead th.sticky-col{background:var(--blue)!important;z-index:3}
+    .dash-table tbody td.sticky-col{background:var(--navy2)}
   </style>
   <section class="card p-4" id="filtros-bar">
     <div class="flex flex-wrap items-center gap-3">
@@ -999,8 +1014,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <table class="w-full text-xs dash-table" id="tp-table">
           <thead class="sticky top-0" style="background:var(--blue);color:var(--gold)">
             <tr>
-              <th class="text-left px-2 py-2">Marca</th>
-              <th class="text-left px-2 py-2">Producto</th>
+              <th class="text-left px-2 py-2 sticky-col sticky-col-1">Marca</th>
+              <th class="text-left px-2 py-2 sticky-col sticky-col-2">Producto</th>
               <th class="text-right px-2 py-2">Venta</th>
               <th class="text-right px-2 py-2">Peso%</th>
               <th class="text-right px-2 py-2">Acum%</th>
@@ -1435,8 +1450,8 @@ async function cargarTP(){
       const s2=f.stock_solo_2||0;
       const s3=f.stock_solo_3||0;
       return `<tr class="row" style="border-bottom:1px solid var(--border)">
-        <td class="px-2 py-1.5 font-medium" style="color:var(--gold)">${f.MARCA||"—"}</td>
-        <td class="px-2 py-1.5" style="color:var(--white)">${(f.PRODUCTO||"—").substring(0,30)}</td>
+        <td class="px-2 py-1.5 font-medium sticky-col sticky-col-1" style="color:var(--gold)">${f.MARCA||"—"}</td>
+        <td class="px-2 py-1.5 sticky-col sticky-col-2" style="color:var(--white)">${(f.PRODUCTO||"—").substring(0,30)}</td>
         <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(v)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${pct}%</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${acum}%</td>
