@@ -1814,6 +1814,34 @@ except Exception as e:
     print(f"[v2] Blueprint gerencial NO registrado: {e}")
 
 
+# ══════════════════════════════════════════════════════════════
+# KEEP-ALIVE: Self-ping cada 4 minutos para evitar que Railway
+# duerma el servicio por inactividad.
+# ══════════════════════════════════════════════════════════════
+import threading, urllib.request
+
+def _keep_alive():
+    """Ping al propio /health cada 4 min para mantener el servicio activo."""
+    import time as _t
+    url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+    if url:
+        url = f"https://{url}/health"
+    else:
+        url = "http://127.0.0.1:" + str(os.environ.get("PORT", 5000)) + "/health"
+    print(f"[keep-alive] Iniciando self-ping → {url}")
+    _t.sleep(60)  # esperar 1 min para que el servidor arranque
+    while True:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"[keep-alive] ping OK ({resp.status})")
+        except Exception as e:
+            print(f"[keep-alive] ping error: {e}")
+        _t.sleep(240)  # cada 4 minutos
+
+threading.Thread(target=_keep_alive, daemon=True).start()
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("ORION - Inteligencia Comercial Genomma v3")
