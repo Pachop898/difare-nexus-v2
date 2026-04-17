@@ -1313,7 +1313,7 @@ async function chatSend(pregunta){
     let filesHtml="";
     if(d.archivos&&d.archivos.length){
       filesHtml='<div class="mt-3 flex flex-wrap gap-2">'+d.archivos.map(f=>
-        `<a href="${S}/api/descargar/${encodeURIComponent(f)}" class="download-link" download>
+        `<a href="${S}/api/descargar/${encodeURIComponent(f)}?token=${encodeURIComponent(TK)}" class="download-link" target="_blank">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           ${f}</a>`
       ).join("")+"</div>";

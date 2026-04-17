@@ -588,9 +588,16 @@ def chat_gerencial():
 # Endpoint para descargar archivos generados por el chat
 @bp.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
-    auth, err = _autorizar()
-    if err:
-        return err
+    # Aceptar token en header O en query param (para links <a href>)
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        token = request.args.get("token", "")
+    if _jwt_verifier and token:
+        usuario = _jwt_verifier(token)
+        if not usuario:
+            return jsonify({"error": "No autorizado"}), 401
+    elif _jwt_verifier:
+        return jsonify({"error": "No autorizado"}), 401
     import tempfile
     ruta = os.path.join(tempfile.gettempdir(), filename)
     if not os.path.exists(ruta):

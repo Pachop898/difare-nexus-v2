@@ -407,8 +407,13 @@ def oportunidad_vectorizacion(producto: str | None = None,
         rows = []
 
     if producto:
+        p = producto.lower()
         rows = [r for r in rows
-                if producto.lower() in str(r.get("PRODUCTO", r.get("producto", ""))).lower()]
+                if p in str(r.get("PRODUCTO", "")).lower()
+                or p in str(r.get("MARCA", "")).lower()]
+
+    marcas_en_pareto = set(r.get("MARCA", "?") for r in rows)
+    print(f"[vectorización] Pareto: {len(rows)} productos, marcas: {sorted(marcas_en_pareto)}")
     return rows[:top_n]
 
 
