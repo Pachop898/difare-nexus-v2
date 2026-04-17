@@ -70,6 +70,8 @@ def _autorizar(roles_permitidos=("admin", "gerencial")):
     if _jwt_verifier is None:
         return None, (jsonify({"error": "JWT no configurado"}), 500)
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        token = request.args.get("token", "")
     usuario = _jwt_verifier(token)
     if not usuario:
         return None, (jsonify({"error": "No autorizado"}), 401)
@@ -209,6 +211,27 @@ def tienda_perfecta():
         return jsonify({"filas": rows}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ── Tienda Perfecta — descarga directa Excel vectorización ──
+
+@bp.route("/tienda-perfecta-excel", methods=["GET"])
+def tienda_perfecta_excel():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        import tempfile
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        fname = f"vectorizacion_completo_{ts}.xlsx"
+        ruta = os.path.join(tempfile.gettempdir(), fname)
+        analitica.exportar_vectorizacion_excel(producto="", ruta_salida=ruta)
+        if not os.path.exists(ruta):
+            return jsonify({"error": "No se pudo generar el archivo"}), 500
+        return send_file(ruta, as_attachment=True, download_name=fname)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:300]}), 500
 
 
 # ══════════════════════════════════════════════════════════════

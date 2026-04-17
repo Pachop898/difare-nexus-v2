@@ -225,7 +225,10 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
     """
     df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"].copy()
 
-    venta_prod = df_farm_todos.groupby(["IDNEPTUNO","MARCA","PRODUCTO"]).agg(
+    group_cols = ["IDNEPTUNO","MARCA","PRODUCTO"]
+    if "IDDIFARE" in df_farm_todos.columns:
+        group_cols = ["IDNEPTUNO","IDDIFARE","MARCA","PRODUCTO"]
+    venta_prod = df_farm_todos.groupby(group_cols).agg(
         venta_total=("VENTA NETA RECUPERO","sum")
     ).reset_index().sort_values("venta_total", ascending=False)
 
@@ -276,8 +279,17 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             stock_leq2 = len(pdv_leq2 | pdv_ausentes)
             stock_leq3 = len(pdv_leq3 | pdv_ausentes)
 
+        iddifare = row.get("IDDIFARE", "")
+        # Convertir IDDIFARE a numérico si es posible (viene como texto)
+        if iddifare != "":
+            try:
+                iddifare = int(float(str(iddifare)))
+            except (ValueError, TypeError):
+                pass
+
         resultado.append({
             "IDNEPTUNO": idneptuno,
+            "IDDIFARE": iddifare,
             "MARCA": marca,
             "PRODUCTO": producto,
             "VENTA": row["venta_total"],

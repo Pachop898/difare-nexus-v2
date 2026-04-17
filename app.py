@@ -922,6 +922,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
         <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
       </div>
+      <div class="mb-3">
+        <a id="btn-tp-excel" href="#" onclick="descargarTPExcel(event)"
+           style="display:inline-flex;align-items:center;gap:6px;background:var(--gold);color:var(--navy);padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;transition:opacity .2s"
+           onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Descargar Detalle Excel
+        </a>
+      </div>
       <div class="overflow-auto max-h-[480px]">
         <table class="w-full text-xs dash-table" id="tp-table">
           <thead class="sticky top-0" style="background:var(--blue);color:var(--gold)">
@@ -1029,6 +1037,25 @@ async function api(path){
   const r=await fetch(S+path,{headers:AH});
   if(r.status===401){logout();return null;}
   return r.json();
+}
+
+// Descarga directa Excel Tienda Perfecta
+async function descargarTPExcel(e){
+  e.preventDefault();
+  const btn=document.getElementById("btn-tp-excel");
+  const orig=btn.innerHTML;
+  btn.innerHTML='<span style="display:inline-flex;align-items:center;gap:6px">Generando…<span style="border:2px solid var(--navy);border-top-color:transparent;border-radius:50%;width:14px;height:14px;display:inline-block;animation:spin 1s linear infinite"></span></span>';
+  btn.style.pointerEvents="none";btn.style.opacity="0.7";
+  try{
+    const r=await fetch(S+"/api/tienda-perfecta-excel?token="+encodeURIComponent(TK));
+    if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||"Error al generar");return;}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;
+    a.download=r.headers.get("content-disposition")?.match(/filename="?(.+?)"?$/)?.[1]||"vectorizacion.xlsx";
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }catch(err){alert("Error: "+err.message);}
+  finally{btn.innerHTML=orig;btn.style.pointerEvents="";btn.style.opacity="";}
 }
 
 // Banner de error global
