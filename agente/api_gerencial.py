@@ -292,7 +292,9 @@ REGLAS:
 CONTEXTO DE NEGOCIO:
 - Canales: FARMACIAS (sell-out en PDV propios de DIFARE), DISTRIBUCION DIFARE (sell-in a clientes externos)
 - DIFARE S.A. = bodega central (solo stock, no venta directa)
-- Parámetros de inventario: lead_time=2 días, buffer=8 días, seguridad=10 días
+- DOIS (Días de Inventario) se calcula VALORIZADO (USD): Stock_Valorizado / Venta_Diaria_Promedio_USD
+- Umbrales DOIS: >30 días = OK, 15-30 = Stock Bajo, <15 = Crítico
+- NO confundir unidades con valores. El inventario se mide en USD, no en unidades físicas.
 - Meses disponibles: Ene-Mar 2026 (cerrados) + Abr 2026 (parcial, data semanal SAP)
 
 VOCABULARIO CLAVE DEL USUARIO:
@@ -328,7 +330,7 @@ _TOOLS_GERENCIAL = [
     },
     {
         "name": "dias_inventario",
-        "description": "Calcula los días de inventario actuales: stock total (bodega + PDV) dividido entre venta diaria promedio. Indica si hay riesgo de desabasto (< 10 días = peligro). Puede filtrar por producto específico.",
+        "description": "Calcula DOIS (Días de Inventario) VALORIZADO en USD: Stock_Valorizado / Venta_Diaria_Promedio_USD. Devuelve DOIS bodega, PDV y total. Umbrales: >30 días = OK, 15-30 = Stock Bajo, <15 = Crítico. NO usa unidades, usa valores monetarios.",
         "input_schema": {
             "type": "object",
             "properties": {

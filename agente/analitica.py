@@ -333,8 +333,11 @@ def pareto_pdv() -> list[dict]:
 
 def dias_inventario(producto: str | None = None) -> dict:
     """
-    Días de inventario = stock_actual / venta_diaria_promedio.
-    Si se pasa producto, filtra a ese IDNEPTUNO o nombre.
+    DOIS (Días de Inventario) = Stock_Valorizado / Venta_Diaria_Promedio.
+    Cálculo VALORIZADO (en USD), NO en unidades.
+    DOIS Bodega = Stock_Bodega_Val / (Venta_Farmacias_Mes / dias_transcurridos)
+    DOIS PDV    = Stock_PDV_Val / (Venta_Farmacias_Mes / dias_transcurridos)
+    DOIS Total  = Stock_Total_Val / (Venta_Farmacias_Mes / dias_transcurridos)
     """
     d = cargar_data()
     bodega = d["bodega"]
@@ -347,17 +350,42 @@ def dias_inventario(producto: str | None = None) -> dict:
         farm_stock = farm_stock[farm_stock["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
 
-    stock_bodega = float(bodega["STOCK"].sum())
-    stock_pdv = float(farm_stock["STOCK"].sum())
-    venta_mes = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
+    # Stock VALORIZADO (USD) — no unidades
+    stock_bodega_val = float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
+    stock_pdv_val = float(farm_stock["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in farm_stock.columns else 0
+    stock_total_val = stock_bodega_val + stock_pdv_val
+
+    # Venta del mes actual en farmacias (valorizada)
+    farm = df_todos[df_todos["UNIDAD"] == "FARMACIAS"]
+    venta_mes = float(farm["VENTA NETA RECUPERO"].sum())
     venta_diaria = venta_mes / ultimo_dia if ultimo_dia else 0
 
+    # DOIS = Stock Valorizado / Venta Diaria Promedio
+    dois_bodega = round(stock_bodega_val / venta_diaria, 1) if venta_diaria else None
+    dois_pdv = round(stock_pdv_val / venta_diaria, 1) if venta_diaria else None
+    dois_total = round(stock_total_val / venta_diaria, 1) if venta_diaria else None
+
+    # Clasificación: >30 días = OK, 15-30 = bajo, <15 = crítico
+    if dois_total is not None:
+        if dois_total > 30:
+            estado = "STOCK OK — inventario saludable"
+        elif dois_total >= 15:
+            estado = "STOCK BAJO — monitorear reabastecimiento"
+        else:
+            estado = "STOCK CRÍTICO — riesgo de desabasto"
+    else:
+        estado = "Sin datos suficientes"
+
     return {
-        "stock_bodega_unidades": stock_bodega,
-        "stock_pdv_unidades": stock_pdv,
-        "stock_total_unidades": stock_bodega + stock_pdv,
-        "venta_diaria_promedio": venta_diaria,
-        "dias_inventario_total": (stock_bodega + stock_pdv) / venta_diaria if venta_diaria else None,
+        "stock_bodega_valorizado": round(stock_bodega_val, 2),
+        "stock_pdv_valorizado": round(stock_pdv_val, 2),
+        "stock_total_valorizado": round(stock_total_val, 2),
+        "venta_diaria_promedio_usd": round(venta_diaria, 2),
+        "dias_transcurridos": ultimo_dia,
+        "dois_bodega": dois_bodega,
+        "dois_pdv": dois_pdv,
+        "dois_total": dois_total,
+        "estado_inventario": estado,
         "dias_seguridad_minimo": DIAS_INV_SEGURIDAD,
         "lead_time_dias": LEAD_TIME_DIAS,
         "buffer_dias": BUFFER_DIAS,
