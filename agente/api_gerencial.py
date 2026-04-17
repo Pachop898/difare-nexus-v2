@@ -298,6 +298,10 @@ def reporte_pdf():
             # Fallback: generar HTML que se puede imprimir como PDF
             return _generar_reporte_html(kpis, dois, venta_mes, tp)
 
+        # Helper: sanitizar unicode para Helvetica (no soporta em-dash, etc.)
+        def _s(text):
+            return str(text).replace("\u2014", "-").replace("\u2013", "-").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"').encode("latin-1", "replace").decode("latin-1")
+
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
@@ -340,7 +344,7 @@ def reporte_pdf():
         pdf.cell(0, 7, f"DOIS Bodega: {dois.get('dois_bodega', '?')} dias", ln=True)
         pdf.cell(0, 7, f"DOIS PDV: {dois.get('dois_pdv', '?')} dias", ln=True)
         pdf.cell(0, 7, f"DOIS Total: {dois.get('dois_total', '?')} dias", ln=True)
-        pdf.cell(0, 7, f"Estado: {dois.get('estado_inventario', '?')}", ln=True)
+        pdf.cell(0, 7, _s(f"Estado: {dois.get('estado_inventario', '?')}"), ln=True)
         pdf.ln(6)
 
         # Venta mensual
@@ -392,8 +396,8 @@ def reporte_pdf():
             s0 = r.get("STOCK_0", 0)
             s1 = max((r.get("STOCK_1", 0) or 0) - (s0 or 0), 0)
             s2 = max((r.get("STOCK_2", 0) or 0) - (r.get("STOCK_1", 0) or 0), 0)
-            pdf.cell(30, 6, str(r.get("MARCA", ""))[:15], 1, 0, "L")
-            pdf.cell(55, 6, str(r.get("PRODUCTO", ""))[:30], 1, 0, "L")
+            pdf.cell(30, 6, _s(str(r.get("MARCA", ""))[:15]), 1, 0, "L")
+            pdf.cell(55, 6, _s(str(r.get("PRODUCTO", ""))[:30]), 1, 0, "L")
             pdf.cell(25, 6, f"${r.get('VENTA', r.get('venta_total', 0)):,.0f}", 1, 0, "R")
             pdf.cell(15, 6, f"{cob}%", 1, 0, "C")
             pdf.cell(20, 6, str(s0), 1, 0, "C")

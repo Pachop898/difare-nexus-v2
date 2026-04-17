@@ -1167,7 +1167,10 @@ async function aplicarFiltros(){
   const lbl=document.getElementById("filtro-label");
   if(_filtroMarca){btn.style.display="inline-block";lbl.textContent="Mostrando: "+_filtroMarca;}
   else{btn.style.display="none";lbl.textContent="";}
-  await Promise.all([cargarKPIs(),cargarChart(),cargarTP()]);
+  // Sync dist filter too
+  const distSel=document.getElementById("dist-marca-filter");
+  if(distSel){distSel.value=_filtroMarca||"";}
+  await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
 }
 
 // ── Funciones de carga individuales (reutilizables con filtros) ──
@@ -1240,6 +1243,7 @@ async function cargarChart(){
 
 async function cargarTP(){
   try{
+    document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
     const d=await api("/api/tienda-perfecta"+_qs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     const filas=d.filas||[];
@@ -1274,26 +1278,35 @@ async function cargarTP(){
   }catch(e){mostrarError(e.message||e);}
 }
 
+// Distribución Numérica — carga reutilizable
+let _distFiltrosInit=false;
+async function cargarDist(){
+  try{
+    const marca=_filtroMarca||document.getElementById("dist-marca-filter").value||"";
+    const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):"")); if(!d) return;
+    if(d.error){return;}
+    // Poblar select de marcas solo la primera vez
+    if(!_distFiltrosInit){
+      const sel=document.getElementById("dist-marca-filter");
+      (d.marcas_disponibles||[]).forEach(m=>{
+        const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);
+      });
+      sel.addEventListener("change",async()=>{
+        // Si el usuario cambia el filtro local de dist, usarlo
+        const d2=await api("/api/dist-numerica-chart?marca="+encodeURIComponent(sel.value));
+        if(d2) renderDistChart(d2);
+      });
+      _distFiltrosInit=true;
+    }
+    renderDistChart(d);
+  }catch(e){console.warn("dist:",e);}
+}
+
 // ── Cargar todo el dashboard ──
 (async()=>{
   await waitForReady();
   await cargarFiltros();
-  await Promise.all([cargarKPIs(),cargarChart(),cargarTP()]);
-  // Distribución Numérica — cargar marcas y chart
-  try{
-    const d=await api("/api/dist-numerica-chart"); if(!d) return;
-    if(d.error){mostrarError(d.error);return;}
-    const sel=document.getElementById("dist-marca-filter");
-    (d.marcas_disponibles||[]).forEach(m=>{
-      const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);
-    });
-    renderDistChart(d);
-    sel.addEventListener("change",async()=>{
-      const marca=sel.value;
-      const d2=await api("/api/dist-numerica-chart?marca="+encodeURIComponent(marca));
-      if(d2) renderDistChart(d2);
-    });
-  }catch(e){mostrarError(e.message||e);}
+  await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
 })(); // fin de la función principal de carga
 
 // Distribución Numérica chart renderer
