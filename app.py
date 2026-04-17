@@ -895,13 +895,29 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .ms-drop input[type=checkbox]{accent-color:var(--gold);width:15px;height:15px}
     .ms-badge{display:inline-block;background:var(--gold);color:var(--navy);font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:4px}
     /* ── Mobile responsive ── */
-    @media(max-width:768px){
+    @media(max-width:820px){
+      /* Header */
+      header .flex{flex-wrap:wrap;gap:6px}
+      header .flex .flex.items-center.gap-3:last-child{flex-wrap:wrap;justify-content:flex-end}
+      /* Main content: usar todo el ancho */
+      main{padding-left:12px!important;padding-right:12px!important}
+      /* KPIs: 2 columnas en móvil */
+      #kpis{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}
+      #kpis .card{padding:12px!important}
+      .kpi-val{font-size:1.3rem!important}
+      .kpi-label{font-size:10px!important}
+      .kpi-sub{font-size:10px!important}
+      /* Filtros: apilados vertical */
+      #filtros-bar{padding:10px!important}
       #filtros-bar .flex{flex-direction:column;align-items:stretch;gap:8px}
-      #filtros-bar select, .ms-btn{width:100%;min-width:0}
+      #filtros-bar select, .ms-btn{width:100%;min-width:0;font-size:14px;padding:10px 12px}
       .ms-wrap{width:100%}
-      #filtro-reset{width:100%;text-align:center}
+      #filtro-reset{width:100%;text-align:center;padding:10px!important}
       #filtro-label{text-align:center;margin-left:0!important}
-      .kpi-val{font-size:1.4rem!important}
+      /* Chart height */
+      #chartCanalMes{min-height:200px}
+      /* Tabla TP: scroll horizontal */
+      .dash-table{font-size:11px!important}
     }
     /* ── Sticky columns for TP table ── */
     .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;z-index:2;background:inherit}
@@ -946,7 +962,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </section>
 
   <!-- KPI cards -->
-  <section id="kpis" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+  <section id="kpis" class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
     <div class="card p-5">
       <div class="text-xs kpi-label">Venta Total</div>
       <div class="kpi-val text-2xl font-semibold mt-1" id="kpi-total">—</div>
