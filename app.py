@@ -4,7 +4,7 @@ Backend + Frontend servido desde Flask
 SQLite · JWT Auth · Vercel-ready
 """
 
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 import anthropic
 import sqlite3
@@ -236,6 +236,14 @@ def debug_db():
     except Exception as e:
         info["tables_error"] = str(e)[:200]
     return jsonify(info), 200
+
+
+@app.route("/branding/<path:filename>", methods=["GET"])
+def branding_file(filename):
+    """Sirve archivos de branding (logos, favicons)."""
+    import os
+    branding_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "branding")
+    return send_from_directory(branding_dir, filename)
 
 
 @app.route("/health", methods=["GET"])
@@ -750,7 +758,7 @@ def chat():
             "top_marcas": {r["MARCA"]: round(r["v"], 2) for r in top_m}
         }
 
-    prompt = f"""Eres el asistente comercial Difare Nexus de Genommalab Ecuador.
+    prompt = f"""Eres ORION, el asistente de inteligencia comercial de Genommalab Ecuador.
 Datos reales DIFARE Ecuador enero-marzo 2026.
 Responde conciso, ejecutivo, maximo 5 lineas. Usa emojis. Destaca numeros con **negrita**.
 
@@ -795,7 +803,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Difare Nexus · Dashboard Gerencial</title>
+<title>ORION · Dashboard Gerencial</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/branding/orion_favicon_32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/branding/orion_favicon_16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/branding/orion_favicon_180.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -857,9 +868,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <header class="sticky top-0 z-20" style="background:var(--navy2);border-bottom:1px solid var(--border)">
   <div class="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg flex items-center justify-center font-bold" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--navy)">N</div>
+      <img src="/branding/orion_v3_icon_app_64.png" alt="ORION" style="width:36px;height:36px;border-radius:10px">
       <div>
-        <div class="text-[15px] font-semibold" style="font-family:'Playfair Display',serif;color:var(--gold)">Difare Nexus</div>
+        <div class="text-[15px] font-semibold" style="font-family:'Playfair Display',serif;color:var(--gold)">ORION</div>
         <div class="text-xs" style="color:var(--muted)">Dashboard Gerencial</div>
       </div>
     </div>
@@ -1805,7 +1816,7 @@ except Exception as e:
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("DIFARE NEXUS v3")
+    print("ORION - Inteligencia Comercial Genomma v3")
     print("=" * 50)
     try:
         v = query_val("SELECT COUNT(*) FROM ventas")
@@ -1830,7 +1841,10 @@ FRONTEND_HTML = r"""<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a1628">
-<title>Difare Nexus</title>
+<title>ORION · Inteligencia Comercial Genomma</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/branding/orion_favicon_32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/branding/orion_favicon_16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/branding/orion_favicon_180.png">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1938,8 +1952,8 @@ body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;
 <body>
 
 <div id="loginScreen" class="login-screen">
-  <div class="login-logo">Difare Nexus</div>
-  <div class="login-sub">Asistente Comercial IA</div>
+  <img src="/branding/orion_v3_horizontal_dark.png" alt="ORION" style="width:280px;margin-bottom:8px">
+  <div class="login-sub">Inteligencia Comercial Genomma</div>
   <div class="login-form">
     <input class="login-input" id="loginUser" placeholder="Usuario" autocomplete="username" autocapitalize="none">
     <input class="login-input" id="loginPass" type="password" placeholder="Contrasena" autocomplete="current-password">
@@ -1951,8 +1965,8 @@ body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;
 <div id="appScreen">
   <div class="header">
     <div class="header-left">
-      <div class="logo-icon">N</div>
-      <div><div class="logo-name">Difare Nexus</div><div class="logo-sub">Asistente Comercial</div></div>
+      <img src="/branding/orion_v3_icon_app_64.png" alt="ORION" style="width:40px;height:40px;border-radius:12px">
+      <div><div class="logo-name">ORION</div><div class="logo-sub">Inteligencia Comercial</div></div>
     </div>
     <div class="header-right">
       <div class="status"><div class="status-dot"></div><span id="userLabel">-</span></div>

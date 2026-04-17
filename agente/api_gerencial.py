@@ -327,7 +327,7 @@ def reporte_pdf():
         pdf.rect(0, 0, 210, 40, "F")
         pdf.set_text_color(201, 168, 76)
         pdf.set_font("Helvetica", "B", 22)
-        pdf.cell(0, 20, "Difare Nexus", ln=True, align="C")
+        pdf.cell(0, 20, "ORION", ln=True, align="C")
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(122, 143, 187)
         pdf.cell(0, 8, f"Reporte Gerencial - {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
@@ -424,7 +424,7 @@ def reporte_pdf():
         pdf.ln(10)
         pdf.set_text_color(122, 143, 187)
         pdf.set_font("Helvetica", "I", 9)
-        pdf.cell(0, 7, "Generado automaticamente por Difare Nexus - Genommalab Ecuador", ln=True, align="C")
+        pdf.cell(0, 7, "Generado automaticamente por ORION - Genommalab Ecuador", ln=True, align="C")
 
         ts = datetime.now().strftime("%Y%m%d_%H%M")
         fname = f"reporte_nexus_{ts}.pdf"
@@ -451,7 +451,7 @@ def _generar_reporte_html(kpis, dois, venta_mes, tp):
     th{{background:#1B3A6B;color:#C9A84C}}
     @media print{{body{{margin:0}}}}
     </style></head><body>
-    <h1>Difare Nexus - Reporte Gerencial</h1>
+    <h1>ORION - Reporte Gerencial</h1>
     <h2>KPIs</h2>
     <p>Venta Total: <b>${vt:,.2f}</b> | Farmacias: <b>${vf:,.2f}</b> | Distribución: <b>${vd:,.2f}</b></p>
     <h2>Días de Inventario</h2>
@@ -483,7 +483,7 @@ def recargar_data():
 # CHAT GERENCIAL — Claude con function calling
 # ══════════════════════════════════════════════════════════════
 
-_SYSTEM_GERENCIAL = """Eres el asistente analítico Difare Nexus para el equipo gerencial de Genommalab Ecuador.
+_SYSTEM_GERENCIAL = """Eres el asistente analítico ORION para el equipo gerencial de Genommalab Ecuador.
 Tu rol es responder preguntas estratégicas sobre ventas, inventario, tendencias de marca y
 rendimiento de puntos de venta (PDV) usando las herramientas disponibles.
 
