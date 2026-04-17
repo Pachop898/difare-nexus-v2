@@ -457,61 +457,246 @@ def sugerido_stock(grupo_farmacia: str | None = None,
 # 6) Export Excel de vectorización (pregunta KAM #6)
 # ══════════════════════════════════════════════════════════════
 
-def exportar_vectorizacion_excel(producto: str, ruta_salida: str) -> str:
+def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "") -> str:
     """
-    Genera un .xlsx con los PDV que NO tienen stock del producto, su
-    velocidad histórica y el mínimo sugerido a enviar.
-    Devuelve la ruta del archivo creado.
+    Genera el Informe de Vectorización semanal COMPLETO.
+    Una pestaña por MARCA con los productos Pareto (80% de venta).
+    Cada fila es un PDV que necesita acción: sin vectorizar, stock=0, stock<=1, stock<=2.
+
+    Regla de SUGERIDO (todas las marcas excepto Suerox):
+      - SIN VECTORIZAR → 2 unidades
+      - Stock=0 → 2 unidades
+      - Stock<=1 → 2 unidades
+      - Stock<=2 → 1 unidad
+
+    Regla de SUGERIDO para SUEROX:
+      Grupo A (Mostrador + Bodegas): SIN VECT→6, Stock=0→6, <=1→5, <=2→4, <=3→3
+      Grupo B (Autoservicio + Pharmacys + Dromayor): SIN VECT→12, Stock=0→12, <=1→11, <=2→10, <=3→9
     """
     d = cargar_data()
     farm_todo = d["farm_todo"]
     farm_stock = d["farm_stock_ult"]
-    dias = max(d["ultimo_dia_venta"], 1)
 
-    prod_hist = farm_todo[farm_todo["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
-    if prod_hist.empty:
-        raise ValueError(f"Producto no encontrado: {producto}")
+    # Obtener Pareto (80% de venta)
+    pareto_rows = oportunidad_vectorizacion(
+        producto=producto if producto else None,
+        top_n=100
+    )
+    if not pareto_rows:
+        raise ValueError("No se encontraron productos Pareto para generar el informe")
 
-    pdv_con_presencia = set(prod_hist["POS"].dropna().unique())
-    prod_stock = farm_stock[farm_stock["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
-    pdv_con_stock = set(prod_stock[prod_stock["STOCK"] > 0]["POS"].dropna().unique())
-
-    # Universo: todos los PDV activos del SAP (no solo los que ya venden el producto)
+    # Universo de PDV activos
     universo_pdv = set(farm_todo["POS"].dropna().unique())
-    pdv_sin_stock = universo_pdv - pdv_con_stock
 
-    # Velocidad promedio del cluster (PDV que sí lo venden)
-    venta_cluster = prod_hist.groupby("POS")["VENTA NETA RECUPERO"].sum()
-    velocidad_cluster_diaria = (venta_cluster.mean() / dias) if not venta_cluster.empty else 0
-    minimo_sugerido = max(int(round(velocidad_cluster_diaria * DIAS_INV_SEGURIDAD)), 1)
-
-    # Construir tabla de salida
-    info_pdv = (farm_todo.groupby("POS")
-                         .agg(razon_social=("ESTABLECIMIENTO", "first"),
-                              provincia=("PROVINCIA", "first") if "PROVINCIA" in farm_todo.columns
-                                                              else ("ESTABLECIMIENTO", "first"))
+    # Info de cada PDV: GRUPOPDV, CODIGOPDV, etc.
+    pdv_info = (farm_todo.groupby("POS")
+                         .agg(GRUPOPDV=("GRUPOPDV", "first"),
+                              CODIGOPDV=("CODIGOPDV", "first"))
                          .reset_index())
-    out = info_pdv[info_pdv["POS"].isin(pdv_sin_stock)].copy()
-    out["producto"] = producto
-    out["velocidad_cluster_diaria"] = round(velocidad_cluster_diaria, 2)
-    out["dias_inventario_seguridad"] = DIAS_INV_SEGURIDAD
-    out["minimo_sugerido_unidades"] = minimo_sugerido
-    out["ya_lo_vendia"] = out["POS"].isin(pdv_con_presencia)
+    pdv_info_map = {r["POS"]: r for _, r in pdv_info.iterrows()}
 
+    # Clasificar GRUPOPDV para Suerox
+    SUEROX_GRUPO_A = {"Cafa Mostrador", "Cafi Mostrador", "Cofa Mostrador",
+                      "Bodegas Internas Privadas", "Bodegas Administrativas"}
+    SUEROX_GRUPO_B = {"Cafa Autoservicio", "Cafi Autoservicio", "Pharmacys", "Dromayor"}
+
+    def sugerido_normal(stock_status):
+        if stock_status == "SIN VECTORIZAR": return 2
+        if stock_status == 0: return 2
+        if stock_status <= 1: return 2
+        if stock_status <= 2: return 1
+        return 0
+
+    def sugerido_suerox_a(stock_status):
+        if stock_status == "SIN VECTORIZAR": return 6
+        if stock_status == 0: return 6
+        if stock_status <= 1: return 5
+        if stock_status <= 2: return 4
+        if stock_status <= 3: return 3
+        return 0
+
+    def sugerido_suerox_b(stock_status):
+        if stock_status == "SIN VECTORIZAR": return 12
+        if stock_status == 0: return 12
+        if stock_status <= 1: return 11
+        if stock_status <= 2: return 10
+        if stock_status <= 3: return 9
+        return 0
+
+    # Agrupar Pareto por marca
+    marcas = {}
+    for r in pareto_rows:
+        m = r.get("MARCA", "Otros")
+        marcas.setdefault(m, []).append(r)
+
+    if not ruta_salida:
+        import tempfile
+        ruta_salida = os.path.join(tempfile.gettempdir(), "vectorizacion_semanal.xlsx")
     os.makedirs(os.path.dirname(ruta_salida) or ".", exist_ok=True)
-    with pd.ExcelWriter(ruta_salida, engine="openpyxl") as w:
-        out.to_excel(w, sheet_name="Vectorización sugerida", index=False)
-        resumen = pd.DataFrame([{
-            "producto": producto,
-            "universo_pdv": len(universo_pdv),
-            "pdv_con_stock": len(pdv_con_stock),
-            "pdv_sin_stock": len(pdv_sin_stock),
-            "cobertura_actual_pct": round(len(pdv_con_stock) / max(len(universo_pdv), 1) * 100, 1),
-            "velocidad_cluster_diaria": round(velocidad_cluster_diaria, 2),
-            "minimo_sugerido_unidades_por_pdv": minimo_sugerido,
-            "total_unidades_a_enviar": minimo_sugerido * len(pdv_sin_stock),
-        }])
-        resumen.to_excel(w, sheet_name="Resumen", index=False)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    header_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    header_fill = PatternFill("solid", fgColor="1B3A6B")
+    data_font = Font(name="Arial", size=9)
+    gold_font = Font(name="Arial", size=9, bold=True, color="C9A84C")
+    red_font = Font(name="Arial", size=9, bold=True, color="FF0000")
+    border = Border(
+        bottom=Side(style="thin", color="D0D0D0")
+    )
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    resumen_rows = []
+
+    for marca, prods in marcas.items():
+        sheet_name = marca[:31]  # Excel 31 char limit
+        ws = wb.create_sheet(title=sheet_name)
+
+        headers = ["GRUPOPDV", "CODIGOPDV", "POS", "IDNEPTUNO", "IDDIFARE",
+                    "PRODUCTO", "STOCK UNIDADES", "SUGERIDO"]
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center
+
+        row_idx = 2
+        total_sugerido = 0
+        total_pdv_accionables = 0
+
+        for prod_info in prods:
+            idneptuno = prod_info.get("IDNEPTUNO", "")
+            producto_nombre = prod_info.get("PRODUCTO", "")
+            is_suerox = marca.upper() == "SUEROX"
+
+            # Buscar PDVs y su stock del último día para este producto
+            prod_stock_df = farm_stock[farm_stock["IDNEPTUNO"] == idneptuno] if farm_stock is not None and not farm_stock.empty else pd.DataFrame()
+            prod_presencia_df = farm_todo[farm_todo["IDNEPTUNO"] == idneptuno] if farm_todo is not None and not farm_todo.empty else pd.DataFrame()
+
+            pdv_con_presencia = set(prod_presencia_df["POS"].dropna().unique())
+            pdv_stock_map = {}
+            if not prod_stock_df.empty:
+                for _, sr in prod_stock_df.iterrows():
+                    pos = sr.get("POS")
+                    if pd.notna(pos):
+                        pdv_stock_map[pos] = sr.get("STOCK", 0) or 0
+
+            # PDVs sin vectorizar: en universo pero sin ninguna presencia histórica
+            pdv_sin_vectorizar = universo_pdv - pdv_con_presencia
+
+            # Construir filas para PDVs que necesitan acción
+            filas_producto = []
+
+            # 1) Sin vectorizar
+            for pos in sorted(pdv_sin_vectorizar):
+                info = pdv_info_map.get(pos, {})
+                grupo = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
+                if is_suerox:
+                    if grupo in SUEROX_GRUPO_B:
+                        sug = sugerido_suerox_b("SIN VECTORIZAR")
+                    else:
+                        sug = sugerido_suerox_a("SIN VECTORIZAR")
+                else:
+                    sug = sugerido_normal("SIN VECTORIZAR")
+                filas_producto.append({
+                    "GRUPOPDV": grupo,
+                    "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
+                    "POS": pos,
+                    "IDNEPTUNO": idneptuno,
+                    "IDDIFARE": prod_info.get("IDDIFARE", ""),
+                    "PRODUCTO": producto_nombre,
+                    "STOCK UNIDADES": "SIN VECTORIZAR",
+                    "SUGERIDO": sug
+                })
+
+            # 2) PDVs con presencia pero stock bajo
+            for pos in sorted(pdv_con_presencia):
+                stock = pdv_stock_map.get(pos)
+                if stock is None:
+                    stock = 0  # no apareció en último día = stock 0
+
+                info = pdv_info_map.get(pos, {})
+                grupo = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
+
+                if is_suerox:
+                    max_threshold = 3
+                    if grupo in SUEROX_GRUPO_B:
+                        sug = sugerido_suerox_b(stock)
+                    else:
+                        sug = sugerido_suerox_a(stock)
+                else:
+                    max_threshold = 2
+                    sug = sugerido_normal(stock)
+
+                if sug > 0:  # Solo incluir si necesita acción
+                    filas_producto.append({
+                        "GRUPOPDV": grupo,
+                        "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
+                        "POS": pos,
+                        "IDNEPTUNO": idneptuno,
+                        "IDDIFARE": prod_info.get("IDDIFARE", ""),
+                        "PRODUCTO": producto_nombre,
+                        "STOCK UNIDADES": stock,
+                        "SUGERIDO": sug
+                    })
+
+            # Escribir filas al Excel
+            for fila in filas_producto:
+                for c, h in enumerate(headers, 1):
+                    cell = ws.cell(row=row_idx, column=c, value=fila[h])
+                    cell.font = data_font
+                    cell.border = border
+                    cell.alignment = left if c <= 6 else center
+                    # Resaltar SIN VECTORIZAR en rojo
+                    if h == "STOCK UNIDADES" and fila[h] == "SIN VECTORIZAR":
+                        cell.font = red_font
+                    elif h == "SUGERIDO":
+                        cell.font = gold_font
+                row_idx += 1
+                total_sugerido += fila["SUGERIDO"]
+                total_pdv_accionables += 1
+
+        # Ajustar anchos de columna
+        ws.column_dimensions["A"].width = 22
+        ws.column_dimensions["B"].width = 12
+        ws.column_dimensions["C"].width = 45
+        ws.column_dimensions["D"].width = 12
+        ws.column_dimensions["E"].width = 12
+        ws.column_dimensions["F"].width = 35
+        ws.column_dimensions["G"].width = 18
+        ws.column_dimensions["H"].width = 12
+
+        resumen_rows.append({
+            "Marca": marca,
+            "Productos Pareto": len(prods),
+            "PDVs accionables": total_pdv_accionables,
+            "Total unidades sugeridas": total_sugerido,
+        })
+
+    # Hoja Resumen al inicio
+    ws_res = wb.create_sheet(title="Resumen", index=0)
+    res_headers = ["Marca", "Productos Pareto", "PDVs accionables", "Total unidades sugeridas"]
+    for c, h in enumerate(res_headers, 1):
+        cell = ws_res.cell(row=1, column=c, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+    for i, r in enumerate(resumen_rows, 2):
+        for c, h in enumerate(res_headers, 1):
+            cell = ws_res.cell(row=i, column=c, value=r[h])
+            cell.font = data_font
+            cell.alignment = center if c >= 2 else left
+    ws_res.column_dimensions["A"].width = 18
+    ws_res.column_dimensions["B"].width = 18
+    ws_res.column_dimensions["C"].width = 18
+    ws_res.column_dimensions["D"].width = 24
+
+    wb.save(ruta_salida)
     return ruta_salida
 
 

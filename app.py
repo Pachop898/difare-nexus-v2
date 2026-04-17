@@ -982,6 +982,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <button class="qbtn" onclick="chatSend('¿Cuáles son las farmacias Pareto que concentran el 80% de la venta?')">Pareto 80/20</button>
     <button class="qbtn" onclick="chatSend('Top 20 farmacias por venta')">Top farmacias</button>
     <button class="qbtn" onclick="chatSend('Top 10 clientes de distribución')">Top distribución</button>
+    <button class="qbtn" onclick="chatSend('Genera el informe de vectorización semanal en Excel para todas las marcas')">Vectorización Excel</button>
+    <button class="qbtn" onclick="chatSend('¿Qué oportunidades de vectorización tengo?')">Oportunidades</button>
   </div>
   <!-- Messages -->
   <div id="chat-msgs" class="space-y-3 overflow-y-auto mb-4 scroll-smooth" style="max-height:600px;min-height:80px"></div>

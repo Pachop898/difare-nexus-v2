@@ -366,16 +366,16 @@ _TOOLS_GERENCIAL = [
     },
     {
         "name": "exportar_excel",
-        "description": "Genera un archivo Excel (.xlsx) con la vectorización de un producto específico: PDVs que NO lo tienen en stock y deberían tenerlo, con sugerido mínimo de unidades a enviar.",
+        "description": "Genera el Informe de Vectorización semanal en Excel (.xlsx) para FARMACIAS. Contiene una pestaña por marca con los productos Pareto (80% de la venta). Cada fila es un PDV que necesita stock: sin vectorizar, stock=0, stock bajo. Incluye columna SUGERIDO con unidades mínimas a enviar. Usa esta herramienta cuando el usuario pide 'reporte de vectorización', 'informe semanal', 'exportar vectorización', o 'generar Excel para el cliente'. Si se pasa un producto específico, solo incluye ese producto.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "producto": {
                     "type": "string",
-                    "description": "Nombre del producto a analizar (ej: 'CICATRICURE', 'TIO NACHO')."
+                    "description": "Producto o marca específica para filtrar (ej: 'NIKZON', 'SUEROX'). Dejar vacío para generar el informe completo con TODAS las marcas Pareto."
                 }
             },
-            "required": ["producto"]
+            "required": []
         }
     },
     {
@@ -458,12 +458,14 @@ def _ejecutar_tool(name: str, inp: dict) -> str:
 
         elif name == "exportar_excel":
             producto = inp.get("producto", "")
-            if not producto:
-                return json.dumps({"error": "Falta el nombre del producto"})
             import tempfile
-            ruta = os.path.join(tempfile.gettempdir(), f"vectorizacion_{producto.replace(' ','_')}.xlsx")
-            analitica.exportar_vectorizacion_excel(producto, ruta)
-            return json.dumps({"ok": True, "ruta": ruta, "producto": producto})
+            from datetime import datetime
+            ts = datetime.now().strftime("%Y%m%d_%H%M")
+            fname = f"vectorizacion_{producto.replace(' ','_') if producto else 'completo'}_{ts}.xlsx"
+            ruta = os.path.join(tempfile.gettempdir(), fname)
+            analitica.exportar_vectorizacion_excel(producto=producto, ruta_salida=ruta)
+            return json.dumps({"ok": True, "ruta": ruta, "producto": producto or "TODAS LAS MARCAS",
+                               "archivo": fname})
 
         elif name == "oportunidad_vectorizacion":
             data = analitica.oportunidad_vectorizacion(
