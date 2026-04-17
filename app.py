@@ -956,10 +956,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">PDV</th>
               <th class="text-center px-2 py-2">Presencia</th>
               <th class="text-center px-2 py-2">%Cob</th>
-              <th class="text-center px-2 py-2" style="color:#ef4444">Stock=0</th>
-              <th class="text-center px-2 py-2" style="color:#f59e0b">Stock=1</th>
-              <th class="text-center px-2 py-2" style="color:#3b82f6">Stock=2</th>
-              <th class="text-center px-2 py-2" style="color:#8b5cf6">Stock=3</th>
+              <th class="text-center px-2 py-2" style="color:#ef4444">#PDV Stock=0</th>
+              <th class="text-center px-2 py-2" style="color:#f59e0b">#PDV Stock=1</th>
+              <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV Stock=2</th>
+              <th class="text-center px-2 py-2" style="color:#8b5cf6">#PDV Stock=3</th>
             </tr>
           </thead>
           <tbody id="tp-body"><tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
