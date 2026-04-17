@@ -798,6 +798,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>Difare Nexus · Dashboard Gerencial</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{--navy:#0a1628;--navy2:#111f38;--blue:#1B3A6B;--azure:#2E75B6;--gold:#C9A84C;--gold2:#F0C97A;--white:#F8FAFF;--muted:#7a8fbb;--border:rgba(46,117,182,0.2)}
@@ -865,6 +866,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="flex items-center gap-3 text-sm">
       <span style="color:var(--muted)">Hola, <b id="userLabel" style="color:var(--white)">—</b></span>
       <span id="rolBadge" class="px-2 py-1 rounded-md text-xs font-medium" style="background:rgba(201,168,76,0.15);color:var(--gold)">—</span>
+      <button onclick="exportarPDFScreenshot()" title="Captura de pantalla" class="text-sm" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:4px 10px;border-radius:8px;cursor:pointer;background:rgba(201,168,76,0.08)">📸 Screenshot</button>
+      <button onclick="exportarPDFReporte()" title="Reporte PDF completo" class="text-sm" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:4px 10px;border-radius:8px;cursor:pointer;background:rgba(201,168,76,0.08)">📄 Reporte PDF</button>
       <button onclick="logout()" class="text-sm" style="color:var(--muted);border:1px solid var(--border);padding:4px 10px;border-radius:8px;cursor:pointer;background:transparent">Salir</button>
     </div>
   </div>
@@ -878,6 +881,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div style="color:var(--gold);font-size:16px;font-weight:500">Cargando datos...</div>
     <div id="loading-sub" style="color:var(--muted);font-size:13px">Esto toma ~30 segundos después de cada deploy</div>
   </div>
+
+  <!-- Filtros globales -->
+  <section class="card p-4" id="filtros-bar">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="text-xs font-semibold" style="color:var(--gold);text-transform:uppercase;letter-spacing:0.05em">Filtros</span>
+      <select id="filtro-marca" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
+        <option value="">Todas las marcas</option>
+      </select>
+      <button id="filtro-reset" onclick="resetFiltros()" style="display:none;font-size:12px;color:var(--gold);border:1px solid rgba(201,168,76,0.3);background:transparent;padding:5px 14px;border-radius:8px;cursor:pointer">✕ Limpiar filtros</button>
+      <span id="filtro-label" class="text-xs" style="color:var(--muted);margin-left:auto"></span>
+    </div>
+  </section>
 
   <!-- KPI cards -->
   <section id="kpis" class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1030,7 +1045,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 </section>
 
-<a href="/" class="fab" id="fab-btn">
+<a href="/" target="_blank" class="fab" id="fab-btn">
   <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   <span class="fab-text">Consultar farmacia</span>
 </a>
@@ -1129,12 +1144,36 @@ async function waitForReady(maxWait=120){
   return true; // proceder de todas formas
 }
 
-// ── Cargar todo el dashboard ──
-(async()=>{
-  await waitForReady();
-  // KPIs
+// ── Filtro global ──
+let _filtroMarca="";
+async function cargarFiltros(){
   try{
-    const d=await api("/api/kpis"); if(!d) return;
+    const d=await api("/api/filtros");if(!d)return;
+    const sel=document.getElementById("filtro-marca");
+    (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);});
+    sel.addEventListener("change",()=>{_filtroMarca=sel.value;aplicarFiltros();});
+  }catch(e){console.warn("filtros:",e);}
+}
+function resetFiltros(){
+  _filtroMarca="";
+  document.getElementById("filtro-marca").value="";
+  document.getElementById("filtro-reset").style.display="none";
+  document.getElementById("filtro-label").textContent="";
+  aplicarFiltros();
+}
+function _qs(){return _filtroMarca?`?marca=${encodeURIComponent(_filtroMarca)}`:""}
+async function aplicarFiltros(){
+  const btn=document.getElementById("filtro-reset");
+  const lbl=document.getElementById("filtro-label");
+  if(_filtroMarca){btn.style.display="inline-block";lbl.textContent="Mostrando: "+_filtroMarca;}
+  else{btn.style.display="none";lbl.textContent="";}
+  await Promise.all([cargarKPIs(),cargarChart(),cargarTP()]);
+}
+
+// ── Funciones de carga individuales (reutilizables con filtros) ──
+async function cargarKPIs(){
+  try{
+    const d=await api("/api/kpis"+_qs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     document.getElementById("kpi-total").textContent=fmtUSD(d.venta_total);
     const vtot=d.venta_total||1;
@@ -1149,10 +1188,12 @@ async function waitForReady(maxWait=120){
     document.getElementById("kpi-periodo").textContent=periodo;
     document.getElementById("kpi-total-sub").textContent=`Data hasta día ${d.ultimo_dia_venta} de abril`;
   }catch(e){mostrarError(e.message||e);}
+}
 
-  // Venta por canal por mes (barras agrupadas)
+let _canalChart=null;
+async function cargarChart(){
   try{
-    const d=await api("/api/venta-canal-mes"); if(!d) return;
+    const d=await api("/api/venta-canal-mes"+_qs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     const filas=d.filas||[];
     if(!filas.length) return;
@@ -1172,7 +1213,8 @@ async function waitForReady(maxWait=120){
         sub.textContent=`Proyección ${nombresMes[actual.mes-1]}: ${proyTot} (día ${actual.ultimo_dia}/${actual.dias_mes})`;
       }
     }
-    new Chart(document.getElementById("chartCanalMes"),{
+    if(_canalChart){_canalChart.destroy();}
+    _canalChart=new Chart(document.getElementById("chartCanalMes"),{
       type:"bar",
       data:{labels,datasets:[
         {label:"Farmacias",data:filas.map(f=>f.farmacias),backgroundColor:"#2563eb",borderRadius:6,maxBarThickness:42,stack:"farm"},
@@ -1194,10 +1236,11 @@ async function waitForReady(maxWait=120){
       }
     });
   }catch(e){mostrarError(e.message||e);}
+}
 
-  // Tienda Perfecta Farmacias
+async function cargarTP(){
   try{
-    const d=await api("/api/tienda-perfecta"); if(!d) return;
+    const d=await api("/api/tienda-perfecta"+_qs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     const filas=d.filas||[];
     const body=document.getElementById("tp-body");
@@ -1229,12 +1272,17 @@ async function waitForReady(maxWait=120){
       </tr>`;
     }).join("");
   }catch(e){mostrarError(e.message||e);}
+}
 
+// ── Cargar todo el dashboard ──
+(async()=>{
+  await waitForReady();
+  await cargarFiltros();
+  await Promise.all([cargarKPIs(),cargarChart(),cargarTP()]);
   // Distribución Numérica — cargar marcas y chart
   try{
     const d=await api("/api/dist-numerica-chart"); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
-    // Poblar select de marcas
     const sel=document.getElementById("dist-marca-filter");
     (d.marcas_disponibles||[]).forEach(m=>{
       const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);
@@ -1409,6 +1457,42 @@ async function chatSend(pregunta){
     thinking.remove();
     addChatBubble('<span class="text-red-500">Error de conexión: '+e.message+'</span>',"bot");
   }
+}
+
+// ════════════════════════════════════════════════
+// EXPORTAR PDF
+// ════════════════════════════════════════════════
+async function exportarPDFScreenshot(){
+  const main=document.querySelector("main");
+  const chat=document.getElementById("chat-section");
+  const fab=document.getElementById("fab-btn");
+  // Ocultar chat y fab temporalmente
+  if(chat)chat.style.display="none";
+  if(fab)fab.style.display="none";
+  try{
+    const canvas=await html2canvas(main,{backgroundColor:"#0a1628",scale:2,useCORS:true,logging:false});
+    const link=document.createElement("a");
+    link.download="dashboard_nexus_"+new Date().toISOString().slice(0,10)+".png";
+    link.href=canvas.toDataURL("image/png");
+    link.click();
+  }catch(e){alert("Error al capturar: "+e.message);}
+  finally{if(chat)chat.style.display="";if(fab)fab.style.display="";}
+}
+
+async function exportarPDFReporte(){
+  const btn=event.target;
+  const orig=btn.innerHTML;
+  btn.innerHTML="Generando…";btn.disabled=true;
+  try{
+    const r=await fetch(S+"/api/reporte-pdf?token="+encodeURIComponent(TK));
+    if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||"Error");return;}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;
+    a.download=r.headers.get("content-disposition")?.match(/filename="?(.+?)"?$/)?.[1]||"reporte_nexus.pdf";
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }catch(e){alert("Error: "+e.message);}
+  finally{btn.innerHTML=orig;btn.disabled=false;}
 }
 
 // Draggable FAB for mobile

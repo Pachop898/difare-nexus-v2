@@ -105,24 +105,51 @@ print(f"[analitica] EXCELS_DIR = {EXCELS_DIR} (existe={os.path.isdir(EXCELS_DIR)
 # ══════════════════════════════════════════════════════════════
 
 _cache = {}
+_cache_ts = 0  # timestamp de última carga
+_CACHE_TTL = 3600  # 1 hora — se recarga automáticamente tras este tiempo
+import time as _time
 
 def _carpeta():
     return EXCELS_DIR if os.path.isdir(EXCELS_DIR) else "excels"
 
+def _excels_mtime() -> float:
+    """Retorna el mtime más reciente de cualquier .xlsx en la carpeta."""
+    import glob
+    carpeta = _carpeta()
+    archivos = glob.glob(os.path.join(carpeta, "*.xlsx"))
+    if not archivos:
+        return 0
+    return max(os.path.getmtime(f) for f in archivos)
+
 def cargar_data(force: bool = False) -> dict:
     """
     Devuelve un dict con todos los DataFrames base ya calculados.
-    Cachea en memoria; usa force=True tras subir un Excel nuevo.
+    Cachea en memoria con TTL de 1 hora.
+    Se auto-invalida si algún Excel fue modificado después del último cache.
+    Usa force=True para forzar recarga.
     """
+    global _cache_ts
+    now = _time.time()
+    # Auto-invalidar si: forzado, TTL expirado, o excels más nuevos
     if _cache and not force:
-        return _cache
+        if (now - _cache_ts) < _CACHE_TTL:
+            # Verificar si excels fueron actualizados
+            try:
+                if _excels_mtime() <= _cache_ts:
+                    return _cache
+            except Exception:
+                return _cache
+        print("[analitica] Cache expirado o excels actualizados, recargando…")
 
     carpeta = _carpeta()
+    t0 = _time.time()
     df_todos = gp.cargar_todos_excels(carpeta)
     bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
     universo = gp.calcular_universo_pdv(carpeta)
     stock_por_mes = gp.cargar_stock_por_mes(carpeta)
     ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
+    elapsed = round(_time.time() - t0, 1)
+    print(f"[analitica] Data cargada en {elapsed}s — {len(df_todos)} filas")
 
     _cache.update({
         "df_todos": df_todos,
@@ -135,22 +162,28 @@ def cargar_data(force: bool = False) -> dict:
         "dias_mes": dias_mes,
         "mes_completo": mes_completo,
     })
+    _cache_ts = _time.time()
     return _cache
 
 
 def invalidar_cache():
+    global _cache_ts
     _cache.clear()
+    _cache_ts = 0
 
 
 # ══════════════════════════════════════════════════════════════
 # KPIs principales (alimenta /api/kpis)
 # ══════════════════════════════════════════════════════════════
 
-def kpis_dashboard() -> dict:
+def kpis_dashboard(marca: str | None = None) -> dict:
     d = cargar_data()
     df = d["df_todos"]
     if df.empty:
         return {"error": "no hay data"}
+
+    if marca:
+        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
 
     farm = df[df["UNIDAD"] == "FARMACIAS"]
     # 'DIFARE S.A.' = bodega · 'DISTRIBUCION DIFARE' = canal distributivo
@@ -170,6 +203,31 @@ def kpis_dashboard() -> dict:
         "dias_mes": d["dias_mes"],
         "mes_completo": d["mes_completo"],
         "stock_por_mes": d["stock_por_mes"],
+    }
+
+
+def filtros_disponibles() -> dict:
+    """Retorna las opciones de filtros disponibles: marcas, provincias, grupos."""
+    d = cargar_data()
+    df = d["df_todos"]
+    farm_todo = d.get("farm_todo")
+
+    # Marcas de todos los datos
+    marcas = sorted(df["MARCA"].dropna().unique().tolist()) if "MARCA" in df.columns else []
+
+    # Provincias y grupos desde farm_todo (farmacias)
+    provincias = []
+    grupos = []
+    if farm_todo is not None and not farm_todo.empty:
+        if "PROVINCIA" in farm_todo.columns:
+            provincias = sorted(farm_todo["PROVINCIA"].dropna().unique().tolist())
+        if "GRUPOPDV" in farm_todo.columns:
+            grupos = sorted(farm_todo["GRUPOPDV"].dropna().unique().tolist())
+
+    return {
+        "marcas": marcas,
+        "provincias": provincias,
+        "grupos": grupos,
     }
 
 
@@ -216,7 +274,7 @@ def _mes_num(mes_raw) -> int | None:
         return None
 
 
-def venta_por_canal_mes() -> list[dict]:
+def venta_por_canal_mes(marca: str | None = None) -> list[dict]:
     """
     Devuelve la venta mensual desglosada por canal.
     Para el mes en curso (incompleto) añade campos de proyección:
@@ -231,6 +289,10 @@ def venta_por_canal_mes() -> list[dict]:
         return []
     # Solo canales de venta real (excluye 'DIFARE S.A.' que es bodega)
     df = df[df["UNIDAD"].isin(["FARMACIAS", "DISTRIBUCION DIFARE"])]
+
+    # Filtrar por marca si aplica
+    if marca:
+        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
     g = (df.groupby(["MES", "UNIDAD"], dropna=True)["VENTA NETA RECUPERO"]
            .sum().reset_index())
     piv = g.pivot(index="MES", columns="UNIDAD", values="VENTA NETA RECUPERO").fillna(0)

@@ -90,7 +90,18 @@ def kpis():
     auth, err = _autorizar()
     if err: return err
     try:
-        return jsonify(analitica.kpis_dashboard()), 200
+        marca = request.args.get("marca", "").strip() or None
+        return jsonify(analitica.kpis_dashboard(marca=marca)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/filtros", methods=["GET"])
+def filtros():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        return jsonify(analitica.filtros_disponibles()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -130,7 +141,8 @@ def venta_canal_mes():
     auth, err = _autorizar()
     if err: return err
     try:
-        return jsonify({"filas": analitica.venta_por_canal_mes()}), 200
+        marca = request.args.get("marca", "").strip() or None
+        return jsonify({"filas": analitica.venta_por_canal_mes(marca=marca)}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -190,7 +202,8 @@ def tienda_perfecta():
     auth, err = _autorizar()
     if err: return err
     try:
-        rows = analitica.oportunidad_vectorizacion(top_n=50)
+        marca = request.args.get("marca", "").strip() or None
+        rows = analitica.oportunidad_vectorizacion(producto=marca, top_n=50)
         # Calcular buckets EXCLUSIVOS:
         # stock_only_0 = PDV con stock exactamente 0 (no aparecen en último día)
         # stock_only_1 = PDV con stock=1 (están en <=1 pero NO en =0)
@@ -258,6 +271,180 @@ def dist_numerica_chart():
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# 7) Reporte PDF estructurado
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/reporte-pdf", methods=["GET"])
+def reporte_pdf():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        import tempfile
+        from datetime import datetime
+        from openpyxl import Workbook  # solo para verificar dependencias
+
+        kpis = analitica.kpis_dashboard()
+        dois = analitica.dias_inventario()
+        venta_mes = analitica.venta_por_canal_mes()
+        tp = analitica.oportunidad_vectorizacion(top_n=30)
+
+        # Generar PDF con fpdf2 (ligero, sin reportlab)
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            # Fallback: generar HTML que se puede imprimir como PDF
+            return _generar_reporte_html(kpis, dois, venta_mes, tp)
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        # Header
+        pdf.set_fill_color(10, 22, 40)
+        pdf.rect(0, 0, 210, 40, "F")
+        pdf.set_text_color(201, 168, 76)
+        pdf.set_font("Helvetica", "B", 22)
+        pdf.cell(0, 20, "Difare Nexus", ln=True, align="C")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.set_text_color(122, 143, 187)
+        pdf.cell(0, 8, f"Reporte Gerencial - {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+        pdf.ln(10)
+
+        # KPIs
+        pdf.set_text_color(201, 168, 76)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "KPIs Principales", ln=True)
+        pdf.set_text_color(40, 40, 40)
+        pdf.set_font("Helvetica", "", 11)
+        vt = kpis.get("venta_total", 0)
+        vf = kpis.get("venta_farmacias", 0)
+        vd = kpis.get("venta_distribucion", 0)
+        pdf.cell(0, 7, f"Venta Total: ${vt:,.2f}", ln=True)
+        pdf.cell(0, 7, f"Farmacias: ${vf:,.2f} ({round(vf/max(vt,1)*100)}%)", ln=True)
+        pdf.cell(0, 7, f"Distribucion: ${vd:,.2f} ({round(vd/max(vt,1)*100)}%)", ln=True)
+        pdf.cell(0, 7, f"Universo PDV: {kpis.get('universo_pdv', 0)}", ln=True)
+        dia = kpis.get("ultimo_dia_venta", "?")
+        dias_m = kpis.get("dias_mes", "?")
+        pdf.cell(0, 7, f"Data hasta dia {dia}/{dias_m} de abril 2026", ln=True)
+        pdf.ln(6)
+
+        # DOIS
+        pdf.set_text_color(201, 168, 76)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Dias de Inventario (DOIS)", ln=True)
+        pdf.set_text_color(40, 40, 40)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 7, f"DOIS Bodega: {dois.get('dois_bodega', '?')} dias", ln=True)
+        pdf.cell(0, 7, f"DOIS PDV: {dois.get('dois_pdv', '?')} dias", ln=True)
+        pdf.cell(0, 7, f"DOIS Total: {dois.get('dois_total', '?')} dias", ln=True)
+        pdf.cell(0, 7, f"Estado: {dois.get('estado_inventario', '?')}", ln=True)
+        pdf.ln(6)
+
+        # Venta mensual
+        pdf.set_text_color(201, 168, 76)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Venta Mensual por Canal", ln=True)
+        meses_nombre = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+        # Table header
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_fill_color(27, 58, 107)
+        pdf.set_text_color(201, 168, 76)
+        pdf.cell(30, 8, "Mes", 1, 0, "C", True)
+        pdf.cell(45, 8, "Farmacias", 1, 0, "C", True)
+        pdf.cell(45, 8, "Distribucion", 1, 0, "C", True)
+        pdf.cell(45, 8, "Total", 1, 1, "C", True)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(40, 40, 40)
+        for fila in venta_mes:
+            m = fila.get("mes", 0)
+            nombre = meses_nombre[m] if 0 < m < 13 else str(m)
+            if fila.get("proyectado"):
+                nombre += " *"
+            pdf.cell(30, 7, nombre, 1, 0, "C")
+            pdf.cell(45, 7, f"${fila.get('farmacias', 0):,.0f}", 1, 0, "R")
+            pdf.cell(45, 7, f"${fila.get('distribucion', 0):,.0f}", 1, 0, "R")
+            pdf.cell(45, 7, f"${fila.get('total', 0):,.0f}", 1, 1, "R")
+        pdf.ln(6)
+
+        # Tienda Perfecta top 15
+        pdf.set_text_color(201, 168, 76)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Top 15 Productos Pareto - Tienda Perfecta", ln=True)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(27, 58, 107)
+        pdf.set_text_color(201, 168, 76)
+        pdf.cell(30, 7, "Marca", 1, 0, "C", True)
+        pdf.cell(55, 7, "Producto", 1, 0, "C", True)
+        pdf.cell(25, 7, "Venta", 1, 0, "C", True)
+        pdf.cell(15, 7, "%Cob", 1, 0, "C", True)
+        pdf.cell(20, 7, "Stock=0", 1, 0, "C", True)
+        pdf.cell(20, 7, "Stock=1", 1, 0, "C", True)
+        pdf.cell(20, 7, "Stock=2", 1, 1, "C", True)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(40, 40, 40)
+        for r in tp[:15]:
+            uni = r.get("UNIVERSO_PDV", 0) or 1
+            pres = r.get("PDV_PRESENCIA", 0)
+            cob = round(pres / uni * 100, 1)
+            s0 = r.get("STOCK_0", 0)
+            s1 = max((r.get("STOCK_1", 0) or 0) - (s0 or 0), 0)
+            s2 = max((r.get("STOCK_2", 0) or 0) - (r.get("STOCK_1", 0) or 0), 0)
+            pdf.cell(30, 6, str(r.get("MARCA", ""))[:15], 1, 0, "L")
+            pdf.cell(55, 6, str(r.get("PRODUCTO", ""))[:30], 1, 0, "L")
+            pdf.cell(25, 6, f"${r.get('VENTA', r.get('venta_total', 0)):,.0f}", 1, 0, "R")
+            pdf.cell(15, 6, f"{cob}%", 1, 0, "C")
+            pdf.cell(20, 6, str(s0), 1, 0, "C")
+            pdf.cell(20, 6, str(s1), 1, 0, "C")
+            pdf.cell(20, 6, str(s2), 1, 1, "C")
+
+        # Footer
+        pdf.ln(10)
+        pdf.set_text_color(122, 143, 187)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(0, 7, "Generado automaticamente por Difare Nexus - Genommalab Ecuador", ln=True, align="C")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        fname = f"reporte_nexus_{ts}.pdf"
+        ruta = os.path.join(tempfile.gettempdir(), fname)
+        pdf.output(ruta)
+        return send_file(ruta, as_attachment=True, download_name=fname)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:300]}), 500
+
+
+def _generar_reporte_html(kpis, dois, venta_mes, tp):
+    """Fallback: genera HTML imprimible si fpdf2 no está disponible."""
+    from flask import Response
+    vt = kpis.get("venta_total", 0)
+    vf = kpis.get("venta_farmacias", 0)
+    vd = kpis.get("venta_distribucion", 0)
+    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Reporte Nexus</title>
+    <style>body{{font-family:Arial;max-width:800px;margin:auto;padding:20px}}
+    h1{{color:#C9A84C}}h2{{color:#1B3A6B;border-bottom:2px solid #C9A84C;padding-bottom:4px}}
+    table{{border-collapse:collapse;width:100%;margin:12px 0}}th,td{{border:1px solid #ccc;padding:6px 10px;font-size:12px}}
+    th{{background:#1B3A6B;color:#C9A84C}}
+    @media print{{body{{margin:0}}}}
+    </style></head><body>
+    <h1>Difare Nexus - Reporte Gerencial</h1>
+    <h2>KPIs</h2>
+    <p>Venta Total: <b>${vt:,.2f}</b> | Farmacias: <b>${vf:,.2f}</b> | Distribución: <b>${vd:,.2f}</b></p>
+    <h2>Días de Inventario</h2>
+    <p>Bodega: <b>{dois.get('dois_bodega','?')}</b> | PDV: <b>{dois.get('dois_pdv','?')}</b> | Total: <b>{dois.get('dois_total','?')}</b> días</p>
+    <p><i>{dois.get('estado_inventario','')}</i></p>
+    <h2>Venta Mensual</h2>
+    <table><tr><th>Mes</th><th>Farmacias</th><th>Distribución</th><th>Total</th></tr>"""
+    meses_n = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    for f in venta_mes:
+        m = f.get("mes", 0)
+        html += f"<tr><td>{meses_n[m] if 0<m<13 else m}</td><td>${f.get('farmacias',0):,.0f}</td><td>${f.get('distribucion',0):,.0f}</td><td>${f.get('total',0):,.0f}</td></tr>"
+    html += "</table><p style='color:#999;font-size:10px;text-align:center'>Usa Ctrl+P para imprimir como PDF</p></body></html>"
+    return Response(html, mimetype="text/html")
 
 
 # ══════════════════════════════════════════════════════════════
