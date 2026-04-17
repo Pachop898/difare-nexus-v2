@@ -347,7 +347,6 @@ def dias_inventario(producto: str | None = None) -> dict:
     d = cargar_data()
     bodega = d["bodega"]
     farm_stock = d["farm_stock_ult"]
-    ultimo_dia = max(d["ultimo_dia_venta"], 1)
     dias_mes = d.get("dias_mes", 30) or 30
 
     # ── Venta del SAP (mes actual) ──
@@ -357,13 +356,21 @@ def dias_inventario(producto: str | None = None) -> dict:
     sap_path = gp.detectar_archivo_sap(carpeta)
     if sap_path:
         df_sap = pd.read_excel(sap_path)
+        # ultimo_dia para DOIS: usar el max día REAL del SAP sin filtro >=100 filas
+        # (el filtro es solo para KPIs del dashboard, no para DOIS)
+        try:
+            fechas_sap = df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["DIA"].apply(gp.parsear_fecha_completa)
+            ultimo_dia = int(fechas_sap.dropna().dt.day.max())
+        except Exception:
+            ultimo_dia = max(d["ultimo_dia_venta"], 1)
         if producto:
             df_sap = df_sap[df_sap["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         venta_sap_farm_dist = float(df_sap[df_sap["UNIDAD"].isin(
             ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
         venta_sap_farm = float(df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
     else:
-        # Fallback: usar df_todos pero solo mes actual (menos preciso)
+        # Fallback: usar df_todos (menos preciso)
+        ultimo_dia = max(d["ultimo_dia_venta"], 1)
         df_todos = d["df_todos"]
         if producto:
             df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
@@ -401,6 +408,12 @@ def dias_inventario(producto: str | None = None) -> dict:
     else:
         estado = "Sin datos suficientes"
 
+    # Fórmula legible para que Claude la muestre
+    fmt = lambda v: f"${v:,.2f}"
+    formula_bodega = f"DOIS Bodega = {fmt(stock_bodega_val)} / ({fmt(venta_sap_farm_dist)}/{ultimo_dia}) = {fmt(stock_bodega_val)} / {fmt(venta_diaria_farm_dist)} = {dois_bodega} días"
+    formula_pdv = f"DOIS PDV = {fmt(stock_pdv_val)} / ({fmt(venta_sap_farm)}/{ultimo_dia}) = {fmt(stock_pdv_val)} / {fmt(venta_diaria_farm)} = {dois_pdv} días"
+    formula_total = f"DOIS Total = {fmt(stock_total_val)} / ({fmt(venta_sap_farm_dist)}/{ultimo_dia}) = {fmt(stock_total_val)} / {fmt(venta_diaria_farm_dist)} = {dois_total} días"
+
     return {
         "stock_bodega_valorizado": round(stock_bodega_val, 2),
         "stock_pdv_valorizado": round(stock_pdv_val, 2),
@@ -415,6 +428,9 @@ def dias_inventario(producto: str | None = None) -> dict:
         "dois_pdv": dois_pdv,
         "dois_total": dois_total,
         "estado_inventario": estado,
+        "formula_bodega": formula_bodega,
+        "formula_pdv": formula_pdv,
+        "formula_total": formula_total,
     }
 
 
