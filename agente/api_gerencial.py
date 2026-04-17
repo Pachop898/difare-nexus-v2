@@ -423,6 +423,28 @@ _TOOLS_GERENCIAL = [
         }
     },
     {
+        "name": "dois_por_producto",
+        "description": "Lista el DOIS (Días de Inventario Valorizado) de CADA producto Pareto individualmente. Permite filtrar por rango: solo productos con DOIS mayor a X días, o menor a Y días. Útil para identificar productos con exceso de inventario (DOIS alto → necesitan promoción) o riesgo de quiebre (DOIS bajo → reabastecer). Devuelve: producto, marca, stock valorizado (bodega+PDV), venta diaria y DOIS.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "umbral_min": {
+                    "type": "number",
+                    "description": "DOIS mínimo para filtrar (ej: 90 para ver solo productos con >90 días de inventario). Default: 0."
+                },
+                "umbral_max": {
+                    "type": "number",
+                    "description": "DOIS máximo para filtrar (ej: 15 para ver solo productos en riesgo). Default: 9999."
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Cantidad máxima de resultados. Default: 30."
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "distribucion_numerica",
         "description": "Análisis de distribución numérica del canal DISTRIBUTIVO (DISTRIBUCION DIFARE): clientes atendidos por RUC mes a mes, clientes nuevos vs perdidos, y penetración del portafolio TOP. Usa esta herramienta cuando el usuario pregunta por 'distribución numérica', 'clientes atendidos', 'cuántos RUCs compraron', o 'penetración del portafolio'.",
         "input_schema": {
@@ -507,6 +529,17 @@ def _ejecutar_tool(name: str, inp: dict) -> str:
             return json.dumps({
                 "total_productos_pareto": len(data),
                 "productos": data
+            }, default=str, ensure_ascii=False)
+
+        elif name == "dois_por_producto":
+            data = analitica.dois_por_producto(
+                umbral_min=inp.get("umbral_min", 0),
+                umbral_max=inp.get("umbral_max", 9999),
+                top_n=inp.get("top_n", 30),
+            )
+            return json.dumps({
+                "total_productos": len(data),
+                "productos": data,
             }, default=str, ensure_ascii=False)
 
         elif name == "distribucion_numerica":
@@ -600,7 +633,8 @@ def chat_gerencial():
 
         # Si agotamos iteraciones, devolver lo que haya
         text_parts = [b.text for b in resp.content if hasattr(b, "text")]
-        return jsonify({"respuesta": "\n".join(text_parts) or "Análisis completado.", "archivos": []}), 200
+        fallback = "\n".join(text_parts) or "No pude completar el análisis con las herramientas disponibles. Intenta reformular la pregunta o ser más específico (ej: menciona una marca o producto concreto)."
+        return jsonify({"respuesta": fallback, "archivos": []}), 200
 
     except Exception as e:
         traceback.print_exc()

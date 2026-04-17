@@ -427,6 +427,71 @@ def dias_inventario(producto: str | None = None) -> dict:
     }
 
 
+def dois_por_producto(umbral_min: float = 0, umbral_max: float = 9999,
+                      top_n: int = 30) -> list[dict]:
+    """
+    Calcula DOIS individual por cada producto Pareto (80% de la venta).
+    Permite filtrar por rango de DOIS: umbral_min <= dois <= umbral_max.
+    Retorna lista ordenada por DOIS descendente.
+    """
+    d = cargar_data()
+    bodega = d["bodega"]
+    farm_stock = d["farm_stock_ult"]
+    ultimo_dia = max(d["ultimo_dia_venta"], 1)
+
+    # Venta SAP del mes actual
+    carpeta = _carpeta()
+    sap_path = gp.detectar_archivo_sap(carpeta)
+    if sap_path:
+        df_sap = pd.read_excel(sap_path)
+    else:
+        df_sap = d["df_todos"]
+
+    # Productos Pareto (80% de la venta en farmacias)
+    farm_sap = df_sap[df_sap["UNIDAD"] == "FARMACIAS"]
+    venta_prod = farm_sap.groupby(["IDNEPTUNO", "MARCA", "PRODUCTO"]).agg(
+        venta=("VENTA NETA RECUPERO", "sum")
+    ).reset_index().sort_values("venta", ascending=False)
+    total = venta_prod["venta"].sum()
+    if total <= 0:
+        return []
+    venta_prod["pct"] = venta_prod["venta"] / total * 100
+    venta_prod["pct_acum"] = venta_prod["pct"].cumsum()
+    pareto = venta_prod[venta_prod["pct_acum"] <= 80].copy()
+    if pareto.empty:
+        pareto = venta_prod.head(20).copy()
+
+    resultados = []
+    for _, row in pareto.iterrows():
+        idnep = row["IDNEPTUNO"]
+        # Stock valorizado en bodega
+        bod_prod = bodega[bodega["IDNEPTUNO"] == idnep]
+        stk_bod = float(bod_prod["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns and not bod_prod.empty else 0
+        # Stock valorizado en PDV
+        pdv_prod = farm_stock[farm_stock["IDNEPTUNO"] == idnep]
+        stk_pdv = float(pdv_prod["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in farm_stock.columns and not pdv_prod.empty else 0
+        stk_total = stk_bod + stk_pdv
+        # Venta diaria del producto
+        venta_diaria = row["venta"] / ultimo_dia if ultimo_dia else 0
+        # DOIS
+        dois = round(stk_total / venta_diaria, 1) if venta_diaria > 0 else 0
+        if umbral_min <= dois <= umbral_max:
+            resultados.append({
+                "IDNEPTUNO": idnep,
+                "MARCA": row["MARCA"],
+                "PRODUCTO": row["PRODUCTO"],
+                "stock_bodega_val": round(stk_bod, 2),
+                "stock_pdv_val": round(stk_pdv, 2),
+                "stock_total_val": round(stk_total, 2),
+                "venta_mes_sap": round(row["venta"], 2),
+                "venta_diaria": round(venta_diaria, 2),
+                "dois": dois,
+            })
+
+    resultados.sort(key=lambda x: x["dois"], reverse=True)
+    return resultados[:top_n]
+
+
 def proyeccion_venta(horizonte_dias: int = 30) -> dict:
     d = cargar_data()
     df = d["df_todos"]
