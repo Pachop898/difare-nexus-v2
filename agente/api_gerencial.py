@@ -209,10 +209,24 @@ REGLAS:
 - Máximo 400 palabras por respuesta.
 
 CONTEXTO DE NEGOCIO:
-- Canales: FARMACIAS (sell-out PDV), DISTRIBUCION DIFARE (sell-in distribuidores)
-- DIFARE S.A. = bodega central (solo stock, no venta)
+- Canales: FARMACIAS (sell-out en PDV propios de DIFARE), DISTRIBUCION DIFARE (sell-in a clientes externos)
+- DIFARE S.A. = bodega central (solo stock, no venta directa)
 - Parámetros de inventario: lead_time=2 días, buffer=8 días, seguridad=10 días
 - Meses disponibles: Ene-Mar 2026 (cerrados) + Abr 2026 (parcial, data semanal SAP)
+
+VOCABULARIO CLAVE DEL USUARIO:
+- "Vectorización" u "Oportunidades de vectorización" = se refiere SIEMPRE a FARMACIAS PROPIAS.
+  Significa identificar qué productos Pareto (80% de la venta) faltan en qué PDV (farmacias) y
+  deberían estar presentes. Usa la herramienta oportunidad_vectorizacion para obtener el análisis
+  Pareto con cobertura, presencia y stock por PDV. Muestra: producto, venta, cobertura actual,
+  PDVs sin stock, y recomienda cuáles priorizar.
+
+- "Distribución numérica" = se refiere al CANAL DISTRIBUTIVO (DISTRIBUCION DIFARE).
+  Significa analizar cuántos clientes (por RUC) se han atendido, cuántos son nuevos vs perdidos
+  mes a mes, y si cada cliente está comprando el portafolio TOP completo.
+  Si el usuario pregunta por distribución numérica, primero PREGUNTA si se refiere al canal
+  distributivo o a farmacias. Si confirma distributivo, usa la herramienta distribucion_numerica.
+  Lo mínimo esperado es que cada cliente con RUC compre el portafolio TOP cada mes.
 """
 
 _TOOLS_GERENCIAL = [
@@ -306,6 +320,44 @@ _TOOLS_GERENCIAL = [
             "required": ["producto"]
         }
     },
+    {
+        "name": "oportunidad_vectorizacion",
+        "description": "Análisis de oportunidades de VECTORIZACIÓN en FARMACIAS propias. Devuelve los productos Pareto (80% de la venta) con: cobertura actual (% de PDVs que lo tienen), PDVs con stock=0, y presencia. Útil para identificar dónde faltan productos estrella y priorizar envíos. Usa esta herramienta cuando el usuario pregunta por 'vectorización', 'oportunidades', 'cobertura de productos', o 'qué falta en las farmacias'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "producto": {
+                    "type": "string",
+                    "description": "Nombre del producto para filtrar. Dejar vacío para ver todos los productos Pareto."
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Cantidad de productos a mostrar. Default: 20.",
+                    "default": 20
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "distribucion_numerica",
+        "description": "Análisis de distribución numérica del canal DISTRIBUTIVO (DISTRIBUCION DIFARE): clientes atendidos por RUC mes a mes, clientes nuevos vs perdidos, y penetración del portafolio TOP. Usa esta herramienta cuando el usuario pregunta por 'distribución numérica', 'clientes atendidos', 'cuántos RUCs compraron', o 'penetración del portafolio'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "marca": {
+                    "type": "string",
+                    "description": "Marca para filtrar (ej: 'CICATRICURE'). Dejar vacío para analizar todas las marcas."
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Cantidad de clientes a mostrar en penetración. Default: 20.",
+                    "default": 20
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 
@@ -355,6 +407,30 @@ def _ejecutar_tool(name: str, inp: dict) -> str:
             analitica.exportar_vectorizacion_excel(producto, ruta)
             return json.dumps({"ok": True, "ruta": ruta, "producto": producto})
 
+        elif name == "oportunidad_vectorizacion":
+            data = analitica.oportunidad_vectorizacion(
+                producto=inp.get("producto") or None,
+                top_n=inp.get("top_n", 20)
+            )
+            # Enriquecer con % cobertura para que Claude lo presente mejor
+            for r in data:
+                uni = r.get("UNIVERSO_PDV", 0) or 1
+                pres = r.get("PDV_PRESENCIA", 0)
+                r["cobertura_pct"] = round(pres / uni * 100, 1)
+                r["pdv_sin_stock"] = r.get("STOCK_0", 0)
+                r["pdv_stock_critico"] = r.get("STOCK_1", 0)
+            return json.dumps({
+                "total_productos_pareto": len(data),
+                "productos": data
+            }, default=str, ensure_ascii=False)
+
+        elif name == "distribucion_numerica":
+            data = analitica.distribucion_numerica(
+                marca=inp.get("marca") or None,
+                top_n=inp.get("top_n", 20)
+            )
+            return json.dumps(data, default=str, ensure_ascii=False)
+
         else:
             return json.dumps({"error": f"Tool desconocida: {name}"})
     except Exception as e:
@@ -377,6 +453,12 @@ def chat_gerencial():
 
     try:
         client = _get_client()
+        # Verificar que la key tenga formato correcto
+        key_val = os.getenv("ANTHROPIC_API_KEY", "")
+        if not key_val:
+            return jsonify({"error": "ANTHROPIC_API_KEY no está configurada en las variables de entorno del servidor."}), 500
+        if not key_val.startswith("sk-ant-"):
+            return jsonify({"error": f"ANTHROPIC_API_KEY tiene formato incorrecto (empieza con '{key_val[:8]}...'). Debe empezar con 'sk-ant-'."}), 500
     except Exception as e:
         return jsonify({"error": f"API key no configurada: {e}"}), 500
 
@@ -437,7 +519,10 @@ def chat_gerencial():
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": f"Error en análisis: {str(e)[:200]}"}), 500
+        err_msg = str(e)
+        if "authentication_error" in err_msg or "invalid x-api-key" in err_msg:
+            return jsonify({"error": "La API key de Anthropic es inválida. Ve a console.anthropic.com > API Keys, genera una nueva key que empiece con 'sk-ant-api03-...' y actualízala en Railway."}), 500
+        return jsonify({"error": f"Error en análisis: {err_msg[:200]}"}), 500
 
 
 # Endpoint para descargar archivos generados por el chat

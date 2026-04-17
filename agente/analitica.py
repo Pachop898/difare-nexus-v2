@@ -513,3 +513,106 @@ def exportar_vectorizacion_excel(producto: str, ruta_salida: str) -> str:
         }])
         resumen.to_excel(w, sheet_name="Resumen", index=False)
     return ruta_salida
+
+
+# ══════════════════════════════════════════════════════════════
+# 7) Distribución numérica — clientes atendidos por RUC (canal distributivo)
+# ══════════════════════════════════════════════════════════════
+
+def distribucion_numerica(marca: str | None = None,
+                          top_n: int = 20) -> dict:
+    """
+    Analiza la distribución numérica del canal DISTRIBUCION DIFARE:
+    - Clientes únicos atendidos (por RUC) en cada mes
+    - Comparativa mensual: ¿cuántos clientes nuevos? ¿cuántos se perdieron?
+    - Penetración del portafolio TOP: ¿cuántos productos distintos compra cada cliente?
+    Si se pasa 'marca', filtra solo esa marca.
+    """
+    d = cargar_data()
+    df = d["df_todos"]
+    dist = df[df["UNIDAD"] == "DISTRIBUCION DIFARE"].copy()
+
+    if dist.empty:
+        return {"error": "No hay datos de distribución"}
+
+    # Filtrar por marca si aplica
+    if marca:
+        dist = dist[dist["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+        if dist.empty:
+            return {"error": f"Marca no encontrada en distribución: {marca}"}
+
+    # Identificar columna RUC
+    ruc_col = "RUC" if "RUC" in dist.columns else "PROPIETARIO"
+
+    # Asegurar columna MES
+    if "MES" not in dist.columns:
+        return {"error": "No hay columna MES en los datos"}
+
+    meses = sorted(dist["MES"].dropna().unique().tolist())
+
+    # Clientes por mes
+    clientes_por_mes = {}
+    for mes in meses:
+        mes_data = dist[dist["MES"] == mes]
+        rucs = set(mes_data[ruc_col].dropna().unique())
+        clientes_por_mes[mes] = rucs
+
+    # Construir resumen mensual
+    resumen_meses = []
+    prev_rucs = set()
+    for mes in meses:
+        rucs = clientes_por_mes[mes]
+        nuevos = rucs - prev_rucs if prev_rucs else set()
+        perdidos = prev_rucs - rucs if prev_rucs else set()
+        resumen_meses.append({
+            "mes": mes,
+            "clientes_atendidos": len(rucs),
+            "clientes_nuevos": len(nuevos),
+            "clientes_perdidos": len(perdidos),
+            "variacion_neta": len(nuevos) - len(perdidos),
+        })
+        prev_rucs = rucs
+
+    # Portafolio TOP: productos Pareto (80% de venta)
+    venta_prod = (dist.groupby("PRODUCTO")["VENTA NETA RECUPERO"].sum()
+                      .sort_values(ascending=False))
+    total = venta_prod.sum()
+    if total > 0:
+        venta_prod_pct = (venta_prod / total * 100).cumsum()
+        productos_top = venta_prod_pct[venta_prod_pct <= 80].index.tolist()
+        if not productos_top:
+            productos_top = venta_prod.head(10).index.tolist()
+    else:
+        productos_top = []
+
+    # Penetración del portafolio TOP por cliente (último mes)
+    ultimo_mes = meses[-1] if meses else None
+    penetracion = []
+    if ultimo_mes and productos_top:
+        ult = dist[(dist["MES"] == ultimo_mes)]
+        por_cliente = (ult.groupby([ruc_col, "PROPIETARIO"])
+                         .agg(
+                             productos_comprados=("PRODUCTO", "nunique"),
+                             productos_top_comprados=("PRODUCTO", lambda x: len(set(x) & set(productos_top))),
+                             venta_total=("VENTA NETA RECUPERO", "sum"),
+                         )
+                         .reset_index()
+                         .sort_values("venta_total", ascending=False))
+        por_cliente["pct_portafolio_top"] = (
+            por_cliente["productos_top_comprados"] / max(len(productos_top), 1) * 100
+        ).round(1)
+        penetracion = por_cliente.head(top_n).to_dict(orient="records")
+
+    # Universo total de clientes (histórico)
+    todos_rucs = set()
+    for rucs in clientes_por_mes.values():
+        todos_rucs |= rucs
+
+    return {
+        "marca_filtro": marca,
+        "total_clientes_historico": len(todos_rucs),
+        "productos_top_count": len(productos_top),
+        "productos_top": productos_top[:15],  # primeros 15 para contexto
+        "resumen_meses": resumen_meses,
+        "penetracion_portafolio_ultimo_mes": penetracion,
+    }
