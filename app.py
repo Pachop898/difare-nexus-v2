@@ -1021,7 +1021,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <section class="card p-6 xl:col-span-3">
       <div class="mb-4">
         <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
-        <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
+        <p id="tp-fecha-stock" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
+        <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Buckets exclusivos</p>
       </div>
       <div class="mb-3" style="display:flex;gap:10px;flex-wrap:wrap">
         <a id="btn-tp-excel" href="#" onclick="descargarTPExcel(event)"
@@ -1085,7 +1086,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div>
       <h2 style="color:var(--gold);font-size:18px;font-weight:700;margin:0">Oportunidades Tienda Perfecta Farmacias</h2>
-      <p style="color:var(--muted);font-size:12px;margin:4px 0 0">Productos Pareto (80% venta) · Stock del último día SAP · Buckets exclusivos</p>
+      <p id="tp-fecha-stock-full" style="color:var(--gold);font-size:14px;font-weight:600;margin:4px 0 2px"></p>
+      <p style="color:var(--muted);font-size:12px;margin:2px 0 0">Productos Pareto (80% venta) · Buckets exclusivos</p>
     </div>
     <button onclick="cerrarTPFullscreen()" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer">✕ Cerrar</button>
   </div>
@@ -1462,6 +1464,18 @@ async function cargarTP(){
     document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
     const d=await api("/api/tienda-perfecta"+_qs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
+    // Mostrar fecha del último stock en subtítulos
+    if(d.ultimo_dia_stock){
+      const dia=d.ultimo_dia_stock;
+      const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      const hoy=new Date();
+      const mesNombre=meses[hoy.getMonth()+1]||"abril";
+      const fechaTxt=`Stock al cierre del ${dia} de ${mesNombre} ${hoy.getFullYear()}`;
+      const elSub=document.getElementById("tp-fecha-stock");
+      if(elSub) elSub.textContent=fechaTxt;
+      const elSubFull=document.getElementById("tp-fecha-stock-full");
+      if(elSubFull) elSubFull.textContent=fechaTxt;
+    }
     const filas=d.filas||[];
     const body=document.getElementById("tp-body");
     if(!filas.length){body.innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}

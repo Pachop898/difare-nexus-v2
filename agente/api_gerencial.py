@@ -237,7 +237,13 @@ def tienda_perfecta():
             uni = r.get("UNIVERSO_PDV", 0) or 1
             pres = r.get("PDV_PRESENCIA", 0) or 0
             r["cobertura_pct"] = round(pres / uni * 100, 1)
-        return jsonify({"filas": rows}), 200
+        # Obtener fecha del último día de stock para mostrar en el dashboard
+        from agente import generar_pdfs as gp
+        try:
+            _, ultimo_dia_stock, _, _ = gp.detectar_ultimo_dia_stock_y_venta()
+        except Exception:
+            ultimo_dia_stock = None
+        return jsonify({"filas": rows, "ultimo_dia_stock": ultimo_dia_stock}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
