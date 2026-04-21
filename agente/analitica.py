@@ -145,12 +145,12 @@ def cargar_data(force: bool = False) -> dict:
     t0 = _time.time()
     df_todos = gp.cargar_todos_excels(carpeta)
     bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
-    # Universo = PDVs con venta>0 O stock>0 en TODOS los meses (no solo SAP actual)
+    # Universo = PDVs farmacias con venta>0 O stock>0 en TODOS los meses
     df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
-    if not df_farm_todos.empty:
+    if not df_farm_todos.empty and "POS" in df_farm_todos.columns:
         _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
         _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0]["POS"].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
-        universo = len(_pv | _ps)
+        universo = len(_pv | _ps) if (_pv or _ps) else gp.calcular_universo_pdv(carpeta)
     else:
         universo = gp.calcular_universo_pdv(carpeta)
     stock_por_mes = gp.cargar_stock_por_mes(carpeta)
@@ -728,18 +728,20 @@ def oportunidad_vectorizacion(producto: str | None = None,
         if "GRUPOPDV" in farm_todo_f.columns:
             farm_todo_f = farm_todo_f[farm_todo_f["GRUPOPDV"].isin(raw_vals)]
 
-        # Universo = PDV con venta>0 O stock>0 usando TODOS los meses (df_todos)
-        # para capturar PDVs que vendieron en meses anteriores pero no este mes
-        df_farm_todos_f = df_todos_f[df_todos_f["UNIDAD"] == "FARMACIAS"]
-        pdv_con_venta = set()
-        pdv_con_stock = set()
-        if not df_farm_todos_f.empty and "VENTA NETA RECUPERO" in df_farm_todos_f.columns:
-            pdv_con_venta = set(df_farm_todos_f[df_farm_todos_f["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique())
-        if not df_farm_todos_f.empty and "STOCK" in df_farm_todos_f.columns:
-            pdv_con_stock = set(df_farm_todos_f[df_farm_todos_f["STOCK"] > 0]["POS"].dropna().unique())
-        universo_f = len(pdv_con_venta | pdv_con_stock) if (pdv_con_venta or pdv_con_stock) else (
-            int(farm_todo_f["POS"].nunique()) if not farm_todo_f.empty else 0
-        )
+        # Universo: PDVs que pertenecen a este grupo (según farm_todo/SAP)
+        # y que tuvieron actividad (venta>0 o stock>0) en CUALQUIER mes de df_todos
+        pdv_del_grupo = set(farm_todo_f["POS"].dropna().unique()) if not farm_todo_f.empty else set()
+        if pdv_del_grupo:
+            df_todos_all = d["df_todos"]
+            df_farm_all = df_todos_all[
+                (df_todos_all["UNIDAD"] == "FARMACIAS") &
+                (df_todos_all["POS"].isin(pdv_del_grupo))
+            ]
+            _pv = set(df_farm_all[df_farm_all["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique()) if (not df_farm_all.empty and "VENTA NETA RECUPERO" in df_farm_all.columns) else set()
+            _ps = set(df_farm_all[df_farm_all["STOCK"] > 0]["POS"].dropna().unique()) if (not df_farm_all.empty and "STOCK" in df_farm_all.columns) else set()
+            universo_f = len(_pv | _ps) if (_pv or _ps) else len(pdv_del_grupo)
+        else:
+            universo_f = 0
 
         t0 = _time.time()
         pareto = gp.calcular_pareto_farmacias(
