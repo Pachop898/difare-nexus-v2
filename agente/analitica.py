@@ -724,18 +724,22 @@ def _calcular_universo_grupo(d: dict, raw_vals: list, farm_todo_f) -> int:
 def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
     """
     Calcula DOI por PDV por producto y agrupa en buckets.
-    DOI = stock_actual / promedio(proy_mes_actual, venta_mes_ant, venta_2meses) * 30
+    DOI = Stock_Valorizado / promedio_venta_diaria
+    Donde promedio_venta_diaria = promedio(
+        venta_mes_actual / dias_transcurridos,
+        venta_mes_anterior / 30,
+        venta_2meses / 30
+    )
+    Usa STOCK_VALORIZADO y VENTA NETA RECUPERO (ambos en USD).
     """
     df_todos = d["df_todos"]
     farm_stock = d["farm_stock_ult"]
     ultimo_dia = max(d["ultimo_dia_venta"], 1)
-    dias_mes = d.get("dias_mes", 30) or 30
 
     # Filtrar solo farmacias
     df_farm = df_farm_src if df_farm_src is not None else df_todos[df_todos["UNIDAD"] == "FARMACIAS"]
 
     if df_farm.empty or "MES" not in df_farm.columns:
-        # Sin datos de meses → devolver rows sin DOI
         for r in rows:
             r["DOI_LE20"] = 0
             r["DOI_20_30"] = 0
@@ -749,11 +753,14 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
     mes_ant = meses_ord[-2] if len(meses_ord) >= 2 else None
     mes_2ant = meses_ord[-3] if len(meses_ord) >= 3 else None
 
+    # Columna de stock valorizado (USD) — fallback a STOCK si no existe
+    stock_col = "STOCK_VALORIZADO" if "STOCK_VALORIZADO" in farm_stock.columns else "STOCK"
+
     for r in rows:
         idneptuno = r.get("IDNEPTUNO", "")
         prod_farm = df_farm[df_farm["IDNEPTUNO"] == idneptuno]
 
-        # Stock por PDV (último día)
+        # Stock valorizado por PDV (último día)
         prod_stock = farm_stock[farm_stock["IDNEPTUNO"] == idneptuno] if not farm_stock.empty else pd.DataFrame()
         if prod_stock.empty:
             r["DOI_LE20"] = 0
@@ -762,7 +769,7 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
             r["DOI_GT60"] = 0
             continue
 
-        stock_por_pdv = prod_stock.groupby("POS")["STOCK"].sum()
+        stock_por_pdv = prod_stock.groupby("POS")[stock_col].sum()
         pdv_con_stock = stock_por_pdv[stock_por_pdv > 0]
 
         if pdv_con_stock.empty:
@@ -772,10 +779,9 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
             r["DOI_GT60"] = 0
             continue
 
-        # Venta por PDV por mes
+        # Venta ($) por PDV por mes
         venta_por_pdv_mes = prod_farm.groupby(["POS", "MES"])["VENTA NETA RECUPERO"].sum().unstack(fill_value=0)
 
-        # Para cada PDV con stock, calcular DOI
         doi_le20 = 0
         doi_20_30 = 0
         doi_30_60 = 0
@@ -784,21 +790,24 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
         for pdv, stock_val in pdv_con_stock.items():
             if stock_val <= 0:
                 continue
-            # Venta mes actual, mes anterior, 2 meses atrás
+
+            # Venta mensual ($) por cada mes
             v_actual = float(venta_por_pdv_mes.loc[pdv, mes_actual]) if (pdv in venta_por_pdv_mes.index and mes_actual in venta_por_pdv_mes.columns) else 0
             v_ant = float(venta_por_pdv_mes.loc[pdv, mes_ant]) if (pdv in venta_por_pdv_mes.index and mes_ant and mes_ant in venta_por_pdv_mes.columns) else 0
             v_2ant = float(venta_por_pdv_mes.loc[pdv, mes_2ant]) if (pdv in venta_por_pdv_mes.index and mes_2ant and mes_2ant in venta_por_pdv_mes.columns) else 0
 
-            # Proyección del mes actual
-            proy_actual = (v_actual / ultimo_dia) * dias_mes if ultimo_dia > 0 else 0
+            # Promedio de venta DIARIA: cada mes se divide por sus días
+            diarios = []
+            if v_actual > 0 and ultimo_dia > 0:
+                diarios.append(v_actual / ultimo_dia)
+            if v_ant > 0:
+                diarios.append(v_ant / 30)
+            if v_2ant > 0:
+                diarios.append(v_2ant / 30)
 
-            # Promedio de los 3 valores
-            valores = [proy_actual, v_ant, v_2ant]
-            n_vals = sum(1 for v in valores if v > 0)
-            promedio = sum(valores) / max(n_vals, 1) if n_vals > 0 else 0
-
-            if promedio > 0:
-                doi = (stock_val / promedio) * 30
+            if diarios:
+                prom_diario = sum(diarios) / len(diarios)
+                doi = stock_val / prom_diario  # resultado en días
             else:
                 doi = 999  # stock sin venta → DOI infinito → bucket >60
 
