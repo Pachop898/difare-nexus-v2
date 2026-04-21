@@ -1546,6 +1546,26 @@ document.addEventListener("click",e=>{
 function _poblarMS(containerId, items, labelId, defaultLabel, onChange){
   const drop=document.getElementById(containerId);
   drop.innerHTML="";
+  // Botones "Todos" / "Ninguno" al inicio
+  const bar=document.createElement("div");
+  bar.style.cssText="display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border)";
+  const btnAll=document.createElement("button");
+  btnAll.textContent="✓ Todos";
+  btnAll.style.cssText="flex:1;padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--gold);color:var(--gold);background:rgba(201,168,76,0.1);cursor:pointer";
+  btnAll.addEventListener("click",()=>{
+    drop.querySelectorAll("input[type=checkbox]").forEach(cb=>{cb.checked=true;});
+    onChange();
+  });
+  const btnNone=document.createElement("button");
+  btnNone.textContent="✕ Ninguno";
+  btnNone.style.cssText="flex:1;padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--muted);color:var(--muted);background:transparent;cursor:pointer";
+  btnNone.addEventListener("click",()=>{
+    drop.querySelectorAll("input[type=checkbox]").forEach(cb=>{cb.checked=false;});
+    onChange();
+  });
+  bar.appendChild(btnAll);bar.appendChild(btnNone);
+  drop.appendChild(bar);
+  // Items
   items.forEach(item=>{
     const lbl=document.createElement("label");
     const cb=document.createElement("input");
@@ -1558,15 +1578,23 @@ function _poblarMS(containerId, items, labelId, defaultLabel, onChange){
 }
 
 function _getChecked(containerId){
-  return Array.from(document.querySelectorAll("#"+containerId+" input:checked")).map(cb=>cb.value);
+  const all=Array.from(document.querySelectorAll("#"+containerId+" input[type=checkbox]"));
+  const checked=all.filter(cb=>cb.checked).map(cb=>cb.value);
+  // Si todos marcados = sin filtro (equivale a "Todos")
+  if(checked.length===all.length) return [];
+  return checked;
 }
 
 function _updateMSLabel(containerId, labelId, defaultLabel){
-  const checked=_getChecked(containerId);
+  const all=document.querySelectorAll("#"+containerId+" input[type=checkbox]");
+  const checked=Array.from(all).filter(cb=>cb.checked);
   const lbl=document.getElementById(labelId);
-  if(!checked.length){lbl.textContent=defaultLabel;lbl.innerHTML=defaultLabel;}
-  else if(checked.length===1){lbl.textContent=checked[0].substring(0,20);lbl.innerHTML=checked[0].substring(0,20);}
-  else{lbl.innerHTML=checked[0].substring(0,14)+'<span class="ms-badge">+'+( checked.length-1)+'</span>';}
+  if(!checked.length||checked.length===all.length){lbl.textContent=defaultLabel;lbl.innerHTML=defaultLabel;
+    // Si todos marcados, desmarcar visualmente para consistencia
+    if(checked.length===all.length) all.forEach(cb=>{cb.checked=false;});
+  }
+  else if(checked.length===1){lbl.textContent=checked[0].value.substring(0,20);lbl.innerHTML=checked[0].value.substring(0,20);}
+  else{lbl.innerHTML=checked[0].value.substring(0,14)+'<span class="ms-badge">+'+(checked.length-1)+'</span>';}
 }
 
 async function cargarFiltrosTP(data){

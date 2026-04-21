@@ -475,33 +475,60 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
     # Usar SAP cacheado en cargar_data() (no re-leer Excel del disco)
     df_sap = d.get("df_sap")
 
-    # Helper: aplicar filtros comunes a un DataFrame
-    def _aplicar_filtros(df):
+    # Helper: aplicar filtros a un DataFrame
+    # venta: todos los filtros | bodega: solo marca/producto | pdv: marca/grupo/producto
+    def _filtro_venta(df):
         _df = df
         if marca and "MARCA" in _df.columns:
             _df = _df[_df["MARCA"].astype(str).str.upper() == marca.upper()]
-        if canal and "CANAL" in _df.columns:
-            _df = _df[_df["CANAL"].astype(str).str.upper() == canal.upper()]
+        if canal and "UNIDAD" in _df.columns:
+            _df = _df[_df["UNIDAD"] == canal]
         if grupos and "GRUPOPDV" in _df.columns:
-            _df = _df[_df["GRUPOPDV"].isin(grupos)]
+            raw_vals = _grupo_raw_values(grupos)
+            _df = _df[_df["GRUPOPDV"].isin(raw_vals)]
+        if producto:
+            _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        return _df
+
+    def _filtro_stock(df, es_bodega=False):
+        _df = df
+        if marca and "MARCA" in _df.columns:
+            _df = _df[_df["MARCA"].astype(str).str.upper() == marca.upper()]
+        # Bodega (DIFARE S.A.) no tiene GRUPOPDV ni canal de farmacia
+        if not es_bodega and grupos and "GRUPOPDV" in _df.columns:
+            raw_vals = _grupo_raw_values(grupos)
+            _df = _df[_df["GRUPOPDV"].isin(raw_vals)]
         if producto:
             _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         return _df
 
     if df_sap is not None:
-        df_sap_f = _aplicar_filtros(df_sap)
-        venta_sap_farm_dist = float(df_sap_f[df_sap_f["UNIDAD"].isin(
-            ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
-        venta_sap_farm = float(df_sap_f[df_sap_f["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
+        df_sap_f = _filtro_venta(df_sap)
+        # Venta: si hay filtro de canal, respetar; si no, usar Farm+Dist y Farm
+        if canal:
+            venta_sap_total = float(df_sap_f["VENTA NETA RECUPERO"].sum())
+            # Si filtra Farmacias: farm_dist=farm, farm=farm
+            # Si filtra Distribución: farm_dist=dist, farm=0
+            venta_sap_farm_dist = venta_sap_total
+            venta_sap_farm = venta_sap_total if canal == "FARMACIAS" else 0
+        else:
+            venta_sap_farm_dist = float(df_sap_f[df_sap_f["UNIDAD"].isin(
+                ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
+            venta_sap_farm = float(df_sap_f[df_sap_f["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
     else:
-        # Fallback: usar df_todos (menos preciso)
-        df_todos = _aplicar_filtros(d["df_todos"])
-        venta_sap_farm_dist = float(df_todos[df_todos["UNIDAD"].isin(
-            ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
-        venta_sap_farm = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
+        df_todos = _filtro_venta(d["df_todos"])
+        if canal:
+            venta_sap_total = float(df_todos["VENTA NETA RECUPERO"].sum())
+            venta_sap_farm_dist = venta_sap_total
+            venta_sap_farm = venta_sap_total if canal == "FARMACIAS" else 0
+        else:
+            venta_sap_farm_dist = float(df_todos[df_todos["UNIDAD"].isin(
+                ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
+            venta_sap_farm = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
 
-    bodega = _aplicar_filtros(bodega)
-    farm_stock = _aplicar_filtros(farm_stock)
+    # Stock: bodega no filtra por canal/grupo; PDV filtra por grupo pero no canal
+    bodega = _filtro_stock(bodega, es_bodega=True)
+    farm_stock = _filtro_stock(farm_stock, es_bodega=False)
 
     # Stock VALORIZADO (USD)
     stock_bodega_val = float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
