@@ -1162,7 +1162,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div class="mb-4">
     <h2 class="text-lg font-semibold section-title">Plan de Visibilidad InStore</h2>
     <p id="vis-fecha" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
-    <p class="text-sm" style="color:var(--muted)">Comparativa venta PDV con exhibición vs sin exhibición · Stock productos negociados</p>
+    <p class="text-sm" style="color:var(--muted)">Venta acumulada PDV con exhibición vs sin exhibición · Stock productos negociados</p>
   </div>
 
   <!-- KPIs Visibilidad -->
@@ -1172,11 +1172,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <p id="vis-k-pdv" style="color:var(--white);font-size:22px;font-weight:700;margin:2px 0">—</p>
     </div>
     <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
-      <p style="color:var(--muted);font-size:11px;margin:0">Venta Prom c/Visibilidad</p>
+      <p style="color:var(--muted);font-size:11px;margin:0">$/PDV c/Visibilidad (acum.)</p>
       <p id="vis-k-vcon" style="color:var(--gold);font-size:22px;font-weight:700;margin:2px 0">—</p>
     </div>
     <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
-      <p style="color:var(--muted);font-size:11px;margin:0">Venta Prom s/Visibilidad</p>
+      <p style="color:var(--muted);font-size:11px;margin:0">$/PDV s/Visibilidad (acum.)</p>
       <p id="vis-k-vsin" style="color:var(--white);font-size:22px;font-weight:700;margin:2px 0">—</p>
     </div>
     <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
@@ -1722,7 +1722,9 @@ async function cargarVisibilidad(){
     if(k.ultimo_dia_stock){
       const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
       const hoy=new Date();
-      document.getElementById("vis-fecha").textContent="Stock al cierre del "+k.ultimo_dia_stock+" de "+meses[hoy.getMonth()+1]+" "+hoy.getFullYear();
+      const mesNom=meses[hoy.getMonth()+1]||"abril";
+      const dias=k.n_dias||k.ultimo_dia_stock;
+      document.getElementById("vis-fecha").textContent="Venta acumulada "+dias+" días de "+mesNom+" · Stock al cierre del "+k.ultimo_dia_stock+" de "+mesNom+" "+hoy.getFullYear();
     }
     // Tabla por elemento
     const elems=d.elementos||[];

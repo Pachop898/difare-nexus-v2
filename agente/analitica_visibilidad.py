@@ -119,6 +119,8 @@ def _cargar_sap_df() -> pd.DataFrame:
 def analisis_visibilidad(force: bool = False) -> dict:
     """
     Análisis completo del plan de visibilidad.
+    - VENTA: acumulada de TODOS los días del SAP (no solo el último)
+    - STOCK: foto del último día con stock > 0
     Retorna dict con KPIs, tabla por elemento, detalle de stock.
     Cache de 1 hora.
     """
@@ -149,12 +151,16 @@ def analisis_visibilidad(force: bool = False) -> dict:
     # Filtrar SAP solo farmacias (excluir DIFARE S.A. = bodega)
     sap_farm = sap[sap["UNIDAD"] != "DIFARE S.A."].copy()
 
-    # Detectar último día con stock
+    # Detectar último día con stock (para foto de stock)
     dia_stock = sap_farm.groupby("DIA")["STOCK"].sum()
     dias_con_stock = dia_stock[dia_stock > 0]
     ultimo_dia_str = dias_con_stock.index.max() if not dias_con_stock.empty else sap_farm["DIA"].max()
 
+    # Dos cortes: TODOS los días para venta, ÚLTIMO DÍA para stock
     sap_ultimo = sap_farm[sap_farm["DIA"] == ultimo_dia_str].copy()
+
+    # Contar días con datos para contexto
+    n_dias = sap_farm["DIA"].nunique()
 
     # ── 1) Análisis POR ELEMENTO ──
     resultados_elementos = []
@@ -169,17 +175,17 @@ def analisis_visibilidad(force: bool = False) -> dict:
         if n_pdv_plan == 0:
             continue
 
-        # Data del último día para estos SKUs
-        sap_skus = sap_ultimo[sap_ultimo["IDNEPTUNO"].isin(skus_set)]
+        # ── VENTA ACUMULADA (todos los días del SAP) ──
+        sap_skus_all = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_set)]
 
-        # PDVs CON visibilidad
-        sap_con = sap_skus[sap_skus["CODIGOPDV"].isin(pdv_con_elem)]
-        # PDVs SIN visibilidad (mismo grupo de canales, mismos SKUs, pero NO en el plan)
-        sap_sin = sap_skus[~sap_skus["CODIGOPDV"].isin(codigos_plan)]
+        # PDVs CON visibilidad — venta acumulada
+        sap_venta_con = sap_skus_all[sap_skus_all["CODIGOPDV"].isin(pdv_con_elem)]
+        # PDVs SIN visibilidad — mismos SKUs, pero NO en ningún plan
+        sap_venta_sin = sap_skus_all[~sap_skus_all["CODIGOPDV"].isin(codigos_plan)]
 
-        # Venta por PDV (sumar todos los SKUs del elemento)
-        venta_con = sap_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
-        venta_sin = sap_sin.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+        # Venta acumulada por PDV (sumar todos los días + todos los SKUs)
+        venta_con = sap_venta_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+        venta_sin = sap_venta_sin.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
 
         venta_prom_con = float(venta_con.mean()) if len(venta_con) > 0 else 0
         venta_prom_sin = float(venta_sin.mean()) if len(venta_sin) > 0 else 0
@@ -188,17 +194,20 @@ def analisis_visibilidad(force: bool = False) -> dict:
         # Lift %
         lift = round((venta_prom_con / venta_prom_sin - 1) * 100, 1) if venta_prom_sin > 0 else 0
 
-        # Stock en PDVs del plan (último día)
-        stock_con = sap_con.groupby("CODIGOPDV")["STOCK"].sum()
-        pdv_con_stock = set(stock_con[stock_con > 0].index)
-        pdv_sin_stock = pdv_con_elem - pdv_con_stock  # PDVs del plan sin ningún stock
+        # ── STOCK del último día ──
+        sap_skus_stock = sap_ultimo[sap_ultimo["IDNEPTUNO"].isin(skus_set)]
+        sap_stock_con = sap_skus_stock[sap_skus_stock["CODIGOPDV"].isin(pdv_con_elem)]
 
-        # Cobertura: PDVs con presencia de AL MENOS 1 SKU del elemento
-        pdv_con_presencia = set(sap_con[sap_con["STOCK"] > 0]["CODIGOPDV"].unique()) | \
-                            set(sap_con[sap_con["VENTA NETA RECUPERO"] > 0]["CODIGOPDV"].unique())
+        stock_con = sap_stock_con.groupby("CODIGOPDV")["STOCK"].sum()
+        pdv_con_stock = set(stock_con[stock_con > 0].index)
+        pdv_sin_stock = pdv_con_elem - pdv_con_stock
+
+        # Cobertura: PDVs con stock>0 O venta>0 (acumulada)
+        pdv_con_presencia = set(stock_con[stock_con > 0].index) | \
+                            set(venta_con[venta_con > 0].index)
         cobertura_pct = round(len(pdv_con_presencia) / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
 
-        # Stock buckets (por PDV, total de SKUs del elemento)
+        # Stock buckets (último día, por PDV, total de SKUs del elemento)
         stock_0 = len(pdv_con_elem - set(stock_con[stock_con > 0].index))
         stock_1 = len(stock_con[(stock_con >= 1) & (stock_con <= 1)])
         stock_2 = len(stock_con[(stock_con >= 2) & (stock_con <= 2)])
@@ -229,12 +238,13 @@ def analisis_visibilidad(force: bool = False) -> dict:
     # Ordenar por venta total desc
     resultados_elementos.sort(key=lambda x: x["venta_total"], reverse=True)
 
-    # ── 2) KPIs globales ──
+    # ── 2) KPIs globales (venta acumulada todos los días) ──
     total_pdv_plan = len(codigos_plan)
-    sap_skus_all = sap_ultimo[sap_ultimo["IDNEPTUNO"].isin(skus_plan)]
 
-    sap_con_all = sap_skus_all[sap_skus_all["CODIGOPDV"].isin(codigos_plan)]
-    sap_sin_all = sap_skus_all[~sap_skus_all["CODIGOPDV"].isin(codigos_plan)]
+    # Venta acumulada global
+    sap_skus_all_global = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_plan)]
+    sap_con_all = sap_skus_all_global[sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
+    sap_sin_all = sap_skus_all_global[~sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
 
     venta_con_all = sap_con_all.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
     venta_sin_all = sap_sin_all.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
@@ -243,13 +253,15 @@ def analisis_visibilidad(force: bool = False) -> dict:
     venta_prom_sin_global = float(venta_sin_all.mean()) if len(venta_sin_all) > 0 else 0
     lift_global = round((venta_prom_con_global / venta_prom_sin_global - 1) * 100, 1) if venta_prom_sin_global > 0 else 0
 
-    # Stock global
-    stock_global = sap_con_all.groupby("CODIGOPDV")["STOCK"].sum()
+    # Stock global (último día)
+    sap_skus_stock_global = sap_ultimo[sap_ultimo["IDNEPTUNO"].isin(skus_plan)]
+    sap_stock_con_global = sap_skus_stock_global[sap_skus_stock_global["CODIGOPDV"].isin(codigos_plan)]
+    stock_global = sap_stock_con_global.groupby("CODIGOPDV")["STOCK"].sum()
     pdv_con_stock_global = len(stock_global[stock_global > 0])
 
     # Cobertura global
-    pdv_con_presencia_global = set(sap_con_all[sap_con_all["STOCK"] > 0]["CODIGOPDV"].unique()) | \
-                                set(sap_con_all[sap_con_all["VENTA NETA RECUPERO"] > 0]["CODIGOPDV"].unique())
+    pdv_con_presencia_global = set(stock_global[stock_global > 0].index) | \
+                                set(venta_con_all[venta_con_all > 0].index)
     cobertura_global = round(len(pdv_con_presencia_global) / total_pdv_plan * 100, 1) if total_pdv_plan > 0 else 0
 
     # Parsear fecha del último día
@@ -258,7 +270,7 @@ def analisis_visibilidad(force: bool = False) -> dict:
     dia_num = int(fecha_stock.day) if not pd.isna(fecha_stock) else 0
 
     elapsed = round(_time.time() - t0, 1)
-    print(f"[visibilidad] Análisis completado en {elapsed}s — {total_pdv_plan} PDVs del plan")
+    print(f"[visibilidad] Análisis completado en {elapsed}s — {total_pdv_plan} PDVs, {n_dias} días de venta")
 
     result = {
         "kpis": {
@@ -272,6 +284,7 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "pdv_con_stock": pdv_con_stock_global,
             "pdv_sin_stock": total_pdv_plan - pdv_con_stock_global,
             "ultimo_dia_stock": dia_num,
+            "n_dias": n_dias,
         },
         "elementos": resultados_elementos,
     }
