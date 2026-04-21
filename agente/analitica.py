@@ -146,10 +146,12 @@ def cargar_data(force: bool = False) -> dict:
     df_todos = gp.cargar_todos_excels(carpeta)
     bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
     # Universo = PDVs farmacias con venta>0 O stock>0 en TODOS los meses
+    # Usar CODIGOPDV (código numérico único) para evitar duplicados por variación de nombre
     df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
-    if not df_farm_todos.empty and "POS" in df_farm_todos.columns:
-        _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
-        _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0]["POS"].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
+    _id_col = "CODIGOPDV" if ("CODIGOPDV" in df_farm_todos.columns if not df_farm_todos.empty else False) else "POS"
+    if not df_farm_todos.empty and _id_col in df_farm_todos.columns:
+        _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0][_id_col].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
+        _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0][_id_col].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
         universo = len(_pv | _ps) if (_pv or _ps) else gp.calcular_universo_pdv(carpeta)
     else:
         universo = gp.calcular_universo_pdv(carpeta)
@@ -728,20 +730,25 @@ def oportunidad_vectorizacion(producto: str | None = None,
         if "GRUPOPDV" in farm_todo_f.columns:
             farm_todo_f = farm_todo_f[farm_todo_f["GRUPOPDV"].isin(raw_vals)]
 
-        # Universo: PDVs que pertenecen a este grupo (según farm_todo/SAP)
-        # y que tuvieron actividad (venta>0 o stock>0) en CUALQUIER mes de df_todos
-        pdv_del_grupo = set(farm_todo_f["POS"].dropna().unique()) if not farm_todo_f.empty else set()
-        if pdv_del_grupo:
-            df_todos_all = d["df_todos"]
-            df_farm_all = df_todos_all[
-                (df_todos_all["UNIDAD"] == "FARMACIAS") &
-                (df_todos_all["POS"].isin(pdv_del_grupo))
-            ]
-            _pv = set(df_farm_all[df_farm_all["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique()) if (not df_farm_all.empty and "VENTA NETA RECUPERO" in df_farm_all.columns) else set()
-            _ps = set(df_farm_all[df_farm_all["STOCK"] > 0]["POS"].dropna().unique()) if (not df_farm_all.empty and "STOCK" in df_farm_all.columns) else set()
-            universo_f = len(_pv | _ps) if (_pv or _ps) else len(pdv_del_grupo)
+        # Universo: PDVs del grupo con actividad en CUALQUIER mes (3 meses)
+        # Usar CODIGOPDV (código numérico) para evitar duplicados por variación de nombre
+        _id = "CODIGOPDV" if "CODIGOPDV" in farm_todo_f.columns else "POS"
+        # Paso 1: códigos del grupo según SAP actual
+        codigos_grupo = set(farm_todo_f[_id].dropna().unique()) if not farm_todo_f.empty else set()
+        # Paso 2: buscar en df_todos (3 meses) PDVs del grupo por GRUPOPDV O por código
+        df_todos_all = d["df_todos"]
+        df_farm_all = df_todos_all[df_todos_all["UNIDAD"] == "FARMACIAS"]
+        if not df_farm_all.empty and _id in df_farm_all.columns:
+            # Incluir PDVs que estén en el grupo (por GRUPOPDV) en cualquier mes
+            mask_grupo = df_farm_all[_id].isin(codigos_grupo)
+            if "GRUPOPDV" in df_farm_all.columns:
+                mask_grupo = mask_grupo | df_farm_all["GRUPOPDV"].isin(raw_vals)
+            df_farm_grupo = df_farm_all[mask_grupo]
+            _pv = set(df_farm_grupo[df_farm_grupo["VENTA NETA RECUPERO"] > 0][_id].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_grupo.columns else set()
+            _ps = set(df_farm_grupo[df_farm_grupo["STOCK"] > 0][_id].dropna().unique()) if "STOCK" in df_farm_grupo.columns else set()
+            universo_f = len(_pv | _ps) if (_pv or _ps) else len(codigos_grupo)
         else:
-            universo_f = 0
+            universo_f = len(codigos_grupo)
 
         t0 = _time.time()
         pareto = gp.calcular_pareto_farmacias(
