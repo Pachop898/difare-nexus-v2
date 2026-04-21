@@ -1445,7 +1445,7 @@ function logout(){
   window.location.href="/";
 }
 
-async function api(path, timeoutMs=30000){
+async function api(path, timeoutMs=45000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
@@ -1505,7 +1505,7 @@ function mostrarError(msg){
 }
 
 // ── Esperar a que el servidor termine de cargar data ──
-async function waitForReady(maxWait=60){
+async function waitForReady(maxWait=120){
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
   overlay.style.display="flex";
@@ -1957,29 +1957,44 @@ async function cargarDist(){
   }catch(e){console.warn("dist:",e);}
 }
 
-// ── Cargar todo el dashboard ──
+// ── Cargar dashboard con retry automático ──
+async function _cargarDashboard(intento){
+  try{
+    await cargarFiltros();
+    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart()]);
+    window._tpLoaded=false; window._distLoaded=false; window._visLoaded=false;
+    return true;
+  }catch(e){
+    console.warn(`Carga intento ${intento} falló:`,e);
+    return false;
+  }
+}
+
 (async()=>{
   await waitForReady();
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
   if(sub)sub.textContent="Cargando dashboard...";
-  // Timeout de seguridad: si en 25s no cargó, quitar overlay y mostrar lo que haya
   const safetyTimer=setTimeout(()=>{
     if(overlay && overlay.style.display!=='none'){
       overlay.style.display="none";
-      console.warn("Overlay removido por timeout de seguridad (25s)");
+      console.warn("Overlay removido por timeout de seguridad");
     }
-  },25000);
-  try{
-    await cargarFiltros();
-    // Solo cargar lo visible del dashboard (KPIs + DOIS + Chart)
-    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart()]);
-    // TP, Dist y Visibilidad se cargan lazy cuando el usuario los necesite
-    window._tpLoaded=false; window._distLoaded=false; window._visLoaded=false;
-  }catch(e){
-    console.error("Error en carga inicial:",e);
-    if(sub)sub.textContent="Error al cargar. Recarga la página.";
-  }finally{
+  },35000);
+  let ok=await _cargarDashboard(1);
+  if(!ok){
+    if(sub)sub.textContent="Reintentando...";
+    await new Promise(r=>setTimeout(r,3000));
+    ok=await _cargarDashboard(2);
+  }
+  if(!ok){
+    // Tercer intento después de 5s más
+    if(sub)sub.textContent="Último intento...";
+    await new Promise(r=>setTimeout(r,5000));
+    ok=await _cargarDashboard(3);
+  }
+  if(!ok && sub) sub.textContent="Error al cargar. Recarga la página.";
+  {
     clearTimeout(safetyTimer);
     if(overlay)overlay.style.display="none";
   }

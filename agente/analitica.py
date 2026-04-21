@@ -150,8 +150,13 @@ def cargar_data(force: bool = False) -> dict:
     ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
 
     # Pre-cachear SAP DataFrame para evitar re-lectura de Excel en cada request
-    sap_path = gp.detectar_archivo_sap(carpeta)
-    df_sap_cached = pd.read_excel(sap_path) if sap_path else None
+    df_sap_cached = None
+    try:
+        sap_path = gp.detectar_archivo_sap(carpeta)
+        if sap_path:
+            df_sap_cached = pd.read_excel(sap_path)
+    except Exception as e:
+        print(f"[analitica] WARN: No se pudo pre-cachear SAP ({e}), se usará df_todos como fallback")
 
     elapsed = round(_time.time() - t0, 1)
     print(f"[analitica] Data cargada en {elapsed}s — {len(df_todos)} filas")
