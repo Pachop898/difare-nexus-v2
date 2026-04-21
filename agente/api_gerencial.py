@@ -233,9 +233,8 @@ def tienda_perfecta():
     try:
         marca, canal, grupos, productos = _parse_filtros()
         grupo = grupos[0] if grupos else None
-        producto = productos[0] if productos else None
         rows = analitica.oportunidad_vectorizacion(
-            marca=marca, producto=producto, grupo=grupo
+            marca=marca, producto=productos if productos else None, grupo=grupo
         )
         # Calcular buckets EXCLUSIVOS de stock
         for r in rows:
@@ -270,7 +269,8 @@ def tienda_perfecta_excel():
         from datetime import datetime
         marca, canal, grupos, productos = _parse_filtros()
         grupo = grupos[0] if grupos else None
-        producto_filtro = productos[0] if productos else ""
+        # productos puede ser lista o vacío
+        producto_filtro = productos[0] if productos and len(productos) == 1 else ""
         ts = datetime.now().strftime("%Y%m%d_%H%M")
         fname = f"vectorizacion_completo_{ts}.xlsx"
         ruta = os.path.join(tempfile.gettempdir(), fname)

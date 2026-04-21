@@ -302,11 +302,20 @@ def filtros_disponibles(marca: str | None = None) -> dict:
         df_prod = df_prod[df_prod["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
     productos = sorted(df_prod["PRODUCTO"].dropna().unique().tolist()) if "PRODUCTO" in df_prod.columns else []
 
+    # Mapeo marca → productos para filtrado dinámico en frontend
+    productos_por_marca = {}
+    if "MARCA" in df.columns and "PRODUCTO" in df.columns:
+        for m in marcas:
+            prods_m = sorted(df[df["MARCA"] == m]["PRODUCTO"].dropna().unique().tolist())
+            if prods_m:
+                productos_por_marca[m] = prods_m
+
     return {
         "marcas": marcas,
         "canales": canales,
         "grupos": grupos,
         "productos": productos,
+        "productos_por_marca": productos_por_marca,
     }
 
 
@@ -810,7 +819,7 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
     return rows
 
 
-def oportunidad_vectorizacion(producto: str | None = None,
+def oportunidad_vectorizacion(producto=None,
                               top_n: int = 0,
                               grupo: str | None = None,
                               marca: str | None = None) -> list[dict]:
@@ -892,9 +901,14 @@ def oportunidad_vectorizacion(producto: str | None = None,
     if marca:
         m = marca.lower()
         rows = [r for r in rows if m in str(r.get("MARCA", "")).lower()]
+    # Filtro de producto: puede ser string o lista de strings
     if producto:
-        p = producto.lower()
-        rows = [r for r in rows if p in str(r.get("PRODUCTO", "")).lower()]
+        if isinstance(producto, list):
+            prod_set = set(p.lower() for p in producto)
+            rows = [r for r in rows if str(r.get("PRODUCTO", "")).lower() in prod_set]
+        else:
+            p = producto.lower()
+            rows = [r for r in rows if p in str(r.get("PRODUCTO", "")).lower()]
 
     if top_n > 0:
         rows = rows[:top_n]

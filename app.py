@@ -1148,15 +1148,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- Filtros propios de Tienda Perfecta -->
   <div class="flex flex-wrap items-center gap-3 mb-4" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px">
     <span style="color:var(--gold);font-size:12px;font-weight:600;letter-spacing:0.5px">FILTROS TP</span>
-    <select id="tp-filtro-marca" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
+    <select id="tp-filtro-marca" onchange="_actualizarProductosTP();cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
       <option value="">Todas las marcas</option>
     </select>
     <select id="tp-filtro-grupo" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
       <option value="">Todos los grupos</option>
     </select>
-    <select id="tp-filtro-producto" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:200px">
-      <option value="">Todos los productos</option>
-    </select>
+    <div class="ms-container" style="position:relative;display:inline-block;min-width:200px">
+      <div id="tp-prod-label" onclick="document.getElementById('tp-prod-drop').classList.toggle('show')"
+           style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:200px">
+        Todos los productos <span style="font-size:10px">▼</span>
+      </div>
+      <div id="tp-prod-drop" class="ms-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-top:4px;z-index:200"></div>
+    </div>
   </div>
 
     <!-- Oportunidades Tienda Perfecta Farmacias -->
@@ -1604,10 +1608,13 @@ function _updateMSLabel(containerId, labelId, defaultLabel){
   else{lbl.innerHTML=checked[0].value.substring(0,14)+'<span class="ms-badge">+'+(checked.length-1)+'</span>';}
 }
 
+// Almacenar todos los productos por marca para filtrado dinámico
+window._tpAllProducts=[];
+window._tpProductsByMarca={};
+
 async function cargarFiltrosTP(data){
   const selM=document.getElementById("tp-filtro-marca");
   const selG=document.getElementById("tp-filtro-grupo");
-  const selP=document.getElementById("tp-filtro-producto");
   if(!selM||!selG)return;
   if(selM.options.length<=1){
     (data.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selM.appendChild(o);});
@@ -1615,9 +1622,33 @@ async function cargarFiltrosTP(data){
   if(selG.options.length<=1){
     (data.grupos||[]).forEach(g=>{const o=document.createElement("option");o.value=g;o.textContent=g;selG.appendChild(o);});
   }
-  if(selP&&selP.options.length<=1&&data.productos){
-    data.productos.forEach(p=>{const o=document.createElement("option");o.value=p;o.textContent=p.substring(0,40);selP.appendChild(o);});
+  // Guardar productos completos para filtrado dinámico
+  if(data.productos&&!window._tpAllProducts.length){
+    window._tpAllProducts=data.productos;
   }
+  // Guardar mapeo marca→productos
+  if(data.productos_por_marca){
+    window._tpProductsByMarca=data.productos_por_marca;
+  }
+  // Poblar productos con multi-select
+  _actualizarProductosTP();
+}
+
+function _actualizarProductosTP(){
+  const marca=document.getElementById("tp-filtro-marca")?.value||"";
+  let prods;
+  if(marca&&window._tpProductsByMarca&&window._tpProductsByMarca[marca]){
+    prods=window._tpProductsByMarca[marca];
+  }else{
+    prods=window._tpAllProducts||[];
+  }
+  _poblarMS("tp-prod-drop",prods,"tp-prod-label","Todos los productos",()=>{
+    _updateMSLabel("tp-prod-drop","tp-prod-label","Todos los productos");
+    cargarTPConFiltros();
+  });
+  // Marcar todos por defecto
+  document.querySelectorAll("#tp-prod-drop input[type=checkbox]").forEach(cb=>{cb.checked=true;});
+  _updateMSLabel("tp-prod-drop","tp-prod-label","Todos los productos");
 }
 
 async function cargarFiltros(){
@@ -1738,10 +1769,11 @@ function _tpQs(){
   const params=[];
   const m=document.getElementById("tp-filtro-marca");
   const g=document.getElementById("tp-filtro-grupo");
-  const p=document.getElementById("tp-filtro-producto");
   if(m&&m.value)params.push("marca="+encodeURIComponent(m.value));
   if(g&&g.value)params.push("grupo="+encodeURIComponent(g.value));
-  if(p&&p.value)params.push("producto="+encodeURIComponent(p.value));
+  // Multi-select de productos
+  const prods=_getChecked("tp-prod-drop");
+  prods.forEach(p=>params.push("producto="+encodeURIComponent(p)));
   return params.length?"?"+params.join("&"):"";
 }
 function cargarTPConFiltros(){cargarTP();cargarDist();}
