@@ -839,12 +839,27 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .content-area{margin-left:260px;min-height:100vh}
   .module{display:none}
   .module.active{display:block}
+  /* Mobile: sidebar colapsado con botón hamburguesa para expandir */
   @media(max-width:820px){
-    .sidebar{width:60px;overflow:hidden}
+    .sidebar{width:60px;overflow:hidden;transition:width .2s}
+    .sidebar.open{width:240px;overflow-y:auto}
     .sidebar .si-label,.sidebar-user span,.sidebar-user div,.sidebar-logo>div{display:none}
+    .sidebar.open .si-label,.sidebar.open .sidebar-user span,.sidebar.open .sidebar-user div,.sidebar.open .sidebar-logo>div{display:inline}
     .sidebar-item{padding:10px;justify-content:center}
+    .sidebar.open .sidebar-item{padding:10px 14px;justify-content:flex-start}
     .content-area{margin-left:60px}
+    .sidebar-toggle{display:flex !important;align-items:center;justify-content:center;padding:10px;cursor:pointer;color:var(--gold);font-size:20px;border:none;background:none;width:100%}
+    /* DOIS responsive: 1 columna en móvil */
+    .dois-grid{grid-template-columns:1fr !important}
+    .dois-grid>div{border-right:none !important;border-bottom:1px solid var(--border)}
+    .dois-grid>div:last-child{border-bottom:none}
+    /* KPI cards responsive */
+    .kpi-grid{grid-template-columns:1fr 1fr !important}
+    /* Filtros responsive */
+    .filtros-bar{flex-direction:column !important}
+    .filtros-bar select,.filtros-bar .ms-wrap{width:100% !important;min-width:unset !important}
   }
+  .sidebar-toggle{display:none}
   .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s;z-index:50;touch-action:none;display:none}
   .fab:hover{transform:translateY(-2px);border-color:var(--gold)}
   @media(max-width:768px){.fab{padding:10px 14px;font-size:12px;gap:6px;bottom:80px;right:14px}.fab svg{width:14px;height:14px}}
@@ -885,7 +900,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <body class="min-h-screen">
 
 <!-- Sidebar -->
-<nav class="sidebar">
+<nav class="sidebar" id="main-sidebar">
+  <button class="sidebar-toggle" onclick="document.getElementById('main-sidebar').classList.toggle('open')">☰</button>
   <div class="sidebar-logo">
     <div style="display:flex;align-items:center;gap:10px">
       <img src="/branding/orion_v3_icon_app_64.png" alt="ORION" style="width:36px;height:36px;border-radius:10px">
@@ -1064,38 +1080,44 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <h2 class="text-sm font-semibold" style="color:var(--gold);letter-spacing:0.5px">DISPONIBILIDAD Y STOCK</h2>
       <p class="text-xs" style="color:var(--muted)" id="dois-sub">Días de inventario al cierre</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+    <div class="dois-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
       <!-- Bodega -->
-      <div style="background:rgba(30,64,120,0.35);padding:10px 14px;border-right:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock Bodega</span>
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS Bodega</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span id="dois-stk-bod" style="color:#60A5FA;font-size:18px;font-weight:700">—</span>
-          <span id="dois-bod" style="color:#60A5FA;font-size:18px;font-weight:700">—</span>
+      <div style="background:rgba(30,64,120,0.35);padding:12px 16px;border-right:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Stock Bodega</div>
+            <div id="dois-stk-bod" style="color:#60A5FA;font-size:16px;font-weight:700;word-break:break-all">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">DOIS Bodega</div>
+            <div id="dois-bod" style="color:#60A5FA;font-size:16px;font-weight:700">—</div>
+          </div>
         </div>
       </div>
       <!-- PDV -->
-      <div style="background:rgba(109,40,217,0.15);padding:10px 14px;border-right:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock PDV</span>
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS PDV</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span id="dois-stk-pdv" style="color:#a78bfa;font-size:18px;font-weight:700">—</span>
-          <span id="dois-pdv" style="color:#a78bfa;font-size:18px;font-weight:700">—</span>
+      <div style="background:rgba(109,40,217,0.15);padding:12px 16px;border-right:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Stock PDV</div>
+            <div id="dois-stk-pdv" style="color:#a78bfa;font-size:16px;font-weight:700;word-break:break-all">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">DOIS PDV</div>
+            <div id="dois-pdv" style="color:#a78bfa;font-size:16px;font-weight:700">—</div>
+          </div>
         </div>
       </div>
       <!-- Total -->
-      <div style="background:rgba(5,150,105,0.15);padding:10px 14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock Total</span>
-          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS Total</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span id="dois-stk-tot" style="color:#10b981;font-size:18px;font-weight:700">—</span>
-          <span id="dois-tot" style="color:#10b981;font-size:18px;font-weight:700">—</span>
+      <div style="background:rgba(5,150,105,0.15);padding:12px 16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Stock Total</div>
+            <div id="dois-stk-tot" style="color:#10b981;font-size:16px;font-weight:700;word-break:break-all">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">DOIS Total</div>
+            <div id="dois-tot" style="color:#10b981;font-size:16px;font-weight:700">—</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1385,6 +1407,9 @@ function showModule(id){
   if(mod) mod.classList.add('active');
   const btn=document.querySelector('.sidebar-item[data-mod="'+id+'"]');
   if(btn) btn.classList.add('active');
+  // Cerrar sidebar en móvil al seleccionar módulo
+  const sb=document.getElementById('main-sidebar');
+  if(sb)sb.classList.remove('open');
   // Trigger lazy-load de módulos no cargados al inicio
   if(id==='visibilidad' && !window._visLoaded){cargarVisibilidad();window._visLoaded=true;}
   if(id==='tienda-perfecta' && !window._tpLoaded){cargarTP();cargarDist();window._tpLoaded=true;window._distLoaded=true;}
@@ -1403,7 +1428,7 @@ function logout(){
   window.location.href="/";
 }
 
-async function api(path, timeoutMs=20000){
+async function api(path, timeoutMs=30000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
@@ -1767,7 +1792,7 @@ async function cargarDOIS(){
 async function cargarTP(){
   try{
     document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
-    const d=await api("/api/tienda-perfecta"+_tpQs()); if(!d) return;
+    const d=await api("/api/tienda-perfecta"+_tpQs(),45000); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     // Mostrar fecha del último stock en subtítulos
     if(d.ultimo_dia_stock){
@@ -1816,7 +1841,7 @@ async function cargarTP(){
 // Plan de Visibilidad InStore — carga
 async function cargarVisibilidad(){
   try{
-    const d=await api("/api/visibilidad"); if(!d) return;
+    const d=await api("/api/visibilidad",45000); if(!d) return;
     if(d.error){console.warn("Visibilidad:",d.error);return;}
     const k=d.kpis||{};
     // KPIs
@@ -1868,7 +1893,7 @@ async function cargarDist(){
   try{
     const tpM=document.getElementById("tp-filtro-marca");
     const marca=(tpM&&tpM.value)||document.getElementById("dist-marca-filter").value||"";
-    const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):"")); if(!d) return;
+    const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):""),45000); if(!d) return;
     if(d.error){return;}
     // Poblar select de marcas solo la primera vez
     if(!_distFiltrosInit){
