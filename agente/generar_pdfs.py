@@ -227,11 +227,13 @@ def calcular_universo_pdv(carpeta="excels"):
     except:
         return 0
 
-def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, universo_pdv):
+def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, universo_pdv,
+                               solo_pareto: bool = False):
     """
     df_todos = data acumulada historica (para calcular venta total)
     df_sap_farm_stock = farmacias del SAP solo en el ultimo dia de stock
     df_sap_farm_todo = farmacias del SAP todos los dias (para presencia)
+    solo_pareto = True → solo 80% venta (legacy), False → todos los ítems con flag
     """
     df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"].copy()
 
@@ -245,12 +247,20 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
     total_venta = venta_prod["venta_total"].sum()
     venta_prod["pct"] = venta_prod["venta_total"] / total_venta * 100
     venta_prod["pct_acum"] = venta_prod["pct"].cumsum()
-    pareto = venta_prod[venta_prod["pct_acum"] <= 80].copy()
-    if pareto.empty:
-        pareto = venta_prod.head(20).copy()
+
+    # Marcar cuáles son pareto (80% de venta)
+    venta_prod["es_pareto"] = venta_prod["pct_acum"] <= 80
+
+    if solo_pareto:
+        items = venta_prod[venta_prod["es_pareto"]].copy()
+        if items.empty:
+            items = venta_prod.head(20).copy()
+    else:
+        # Todos los ítems con venta > 0
+        items = venta_prod[venta_prod["venta_total"] > 0].copy()
 
     resultado = []
-    for _, row in pareto.iterrows():
+    for _, row in items.iterrows():
         idneptuno = row["IDNEPTUNO"]
         marca = row["MARCA"]
         producto = row["PRODUCTO"]
@@ -305,6 +315,7 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             "VENTA": row["venta_total"],
             "PCT": row["pct"],
             "PCT_ACUM": row["pct_acum"],
+            "es_pareto": bool(row["es_pareto"]),
             "UNIVERSO_PDV": universo_pdv,
             "PDV_PRESENCIA": presencia,
             "STOCK_0": stock_eq0,

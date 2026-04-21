@@ -1154,6 +1154,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <select id="tp-filtro-grupo" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
       <option value="">Todos los grupos</option>
     </select>
+    <select id="tp-filtro-producto" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:200px">
+      <option value="">Todos los productos</option>
+    </select>
   </div>
 
     <!-- Oportunidades Tienda Perfecta Farmacias -->
@@ -1161,7 +1164,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <div class="mb-4">
         <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
         <p id="tp-fecha-stock" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
-        <p class="text-sm" style="color:var(--muted)">Productos Pareto (80% venta) · Buckets exclusivos</p>
+        <p class="text-sm" style="color:var(--muted)">Todos los ítems activos · <span style="color:var(--gold)">★ resaltados = Pareto 80%</span></p>
       </div>
       <div class="mb-3" style="display:flex;gap:10px;flex-wrap:wrap">
         <a id="btn-tp-excel" href="#" onclick="descargarTPExcel(event)"
@@ -1189,13 +1192,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">PDV</th>
               <th class="text-center px-2 py-2">Presencia</th>
               <th class="text-center px-2 py-2">%Cob</th>
-              <th class="text-center px-2 py-2" style="color:#ef4444">#PDV Stock=0</th>
-              <th class="text-center px-2 py-2" style="color:#f59e0b">#PDV Stock=1</th>
-              <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV Stock=2</th>
-              <th class="text-center px-2 py-2" style="color:#8b5cf6">#PDV Stock=3</th>
+              <th class="text-center px-2 py-2" style="color:#ef4444">#PDV<br>Stock=0</th>
+              <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV<br>Stock≤2</th>
+              <th class="text-center px-2 py-2" style="color:#f97316">DOI<br>≤20</th>
+              <th class="text-center px-2 py-2" style="color:#eab308">DOI<br>20-30</th>
+              <th class="text-center px-2 py-2" style="color:#22c55e">DOI<br>30-60</th>
+              <th class="text-center px-2 py-2" style="color:#8b5cf6">DOI<br>&gt;60</th>
             </tr>
           </thead>
-          <tbody id="tp-body"><tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+          <tbody id="tp-body"><tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -1226,7 +1231,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div>
       <h2 style="color:var(--gold);font-size:18px;font-weight:700;margin:0">Oportunidades Tienda Perfecta Farmacias</h2>
       <p id="tp-fecha-stock-full" style="color:var(--gold);font-size:14px;font-weight:600;margin:4px 0 2px"></p>
-      <p style="color:var(--muted);font-size:12px;margin:2px 0 0">Productos Pareto (80% venta) · Buckets exclusivos</p>
+      <p style="color:var(--muted);font-size:12px;margin:2px 0 0">Todos los ítems activos · <span style="color:var(--gold)">★ = Pareto 80%</span></p>
     </div>
     <button onclick="cerrarTPFullscreen()" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer">✕ Cerrar</button>
   </div>
@@ -1468,7 +1473,9 @@ async function descargarTPExcel(e){
   btn.innerHTML='<span style="display:inline-flex;align-items:center;gap:6px">Generando…<span style="border:2px solid var(--navy);border-top-color:transparent;border-radius:50%;width:14px;height:14px;display:inline-block;animation:spin 1s linear infinite"></span></span>';
   btn.style.pointerEvents="none";btn.style.opacity="0.7";
   try{
-    const r=await fetch(S+"/api/tienda-perfecta-excel?token="+encodeURIComponent(TK));
+    const qs=_tpQs();
+    const sep=qs.includes("?")?"&":"?";
+    const r=await fetch(S+"/api/tienda-perfecta-excel"+qs+sep+"token="+encodeURIComponent(TK));
     if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||"Error al generar");return;}
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
@@ -1598,16 +1605,18 @@ function _updateMSLabel(containerId, labelId, defaultLabel){
 }
 
 async function cargarFiltrosTP(data){
-  // Poblar filtros independientes de Tienda Perfecta
   const selM=document.getElementById("tp-filtro-marca");
   const selG=document.getElementById("tp-filtro-grupo");
+  const selP=document.getElementById("tp-filtro-producto");
   if(!selM||!selG)return;
-  // Solo poblar una vez
   if(selM.options.length<=1){
     (data.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selM.appendChild(o);});
   }
   if(selG.options.length<=1){
     (data.grupos||[]).forEach(g=>{const o=document.createElement("option");o.value=g;o.textContent=g;selG.appendChild(o);});
+  }
+  if(selP&&selP.options.length<=1&&data.productos){
+    data.productos.forEach(p=>{const o=document.createElement("option");o.value=p;o.textContent=p.substring(0,40);selP.appendChild(o);});
   }
 }
 
@@ -1729,8 +1738,10 @@ function _tpQs(){
   const params=[];
   const m=document.getElementById("tp-filtro-marca");
   const g=document.getElementById("tp-filtro-grupo");
+  const p=document.getElementById("tp-filtro-producto");
   if(m&&m.value)params.push("marca="+encodeURIComponent(m.value));
   if(g&&g.value)params.push("grupo="+encodeURIComponent(g.value));
+  if(p&&p.value)params.push("producto="+encodeURIComponent(p.value));
   return params.length?"?"+params.join("&"):"";
 }
 function cargarTPConFiltros(){cargarTP();cargarDist();}
@@ -1836,10 +1847,9 @@ async function cargarDOIS(){
 
 async function cargarTP(){
   try{
-    document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
+    document.getElementById("tp-body").innerHTML='<tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
     const d=await api("/api/tienda-perfecta"+_tpQs(),90000); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
-    // Mostrar fecha del último stock en subtítulos
     if(d.ultimo_dia_stock){
       const dia=d.ultimo_dia_stock;
       const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -1853,7 +1863,7 @@ async function cargarTP(){
     }
     const filas=d.filas||[];
     const body=document.getElementById("tp-body");
-    if(!filas.length){body.innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
+    if(!filas.length){body.innerHTML='<tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
     body.innerHTML=filas.map(f=>{
       const v=f.VENTA||f.venta_total||0;
       const pct=(f.PCT||0).toFixed(1);
@@ -1862,12 +1872,16 @@ async function cargarTP(){
       const pres=f.PDV_PRESENCIA||0;
       const cob=f.cobertura_pct||0;
       const s0=f.stock_solo_0||0;
-      const s1=f.stock_solo_1||0;
       const s2=f.stock_solo_2||0;
-      const s3=f.stock_solo_3||0;
-      return `<tr class="row" style="border-bottom:1px solid var(--border)">
-        <td class="px-2 py-1.5 font-medium sticky-col sticky-col-1" style="color:var(--gold)">${f.MARCA||"—"}</td>
-        <td class="px-2 py-1.5 sticky-col sticky-col-2" style="color:var(--white)">${(f.PRODUCTO||"—").substring(0,30)}</td>
+      const d1=f.DOI_LE20||0;
+      const d2=f.DOI_20_30||0;
+      const d3=f.DOI_30_60||0;
+      const d4=f.DOI_GT60||0;
+      const isP=f.es_pareto;
+      const bg=isP?'background:rgba(212,175,55,0.08);':'';
+      return `<tr class="row" style="border-bottom:1px solid var(--border);${bg}">
+        <td class="px-2 py-1.5 font-medium sticky-col sticky-col-1" style="color:var(--gold);${bg}">${isP?'★ ':''}${f.MARCA||"—"}</td>
+        <td class="px-2 py-1.5 sticky-col sticky-col-2" style="color:var(--white);${bg}">${(f.PRODUCTO||"—").substring(0,30)}</td>
         <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(v)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${pct}%</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${acum}%</td>
@@ -1875,9 +1889,11 @@ async function cargarTP(){
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pres}</td>
         <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${s0||""}</td>
-        <td class="px-2 py-1.5 text-center" style="color:#f59e0b">${s1||""}</td>
         <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${s2||""}</td>
-        <td class="px-2 py-1.5 text-center" style="color:#8b5cf6">${s3||""}</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#f97316">${d1||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#eab308">${d2||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#22c55e">${d3||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#8b5cf6">${d4||""}</td>
       </tr>`;
     }).join("");
   }catch(e){mostrarError(e.message||e);}

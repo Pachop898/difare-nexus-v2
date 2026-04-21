@@ -233,25 +233,22 @@ def tienda_perfecta():
     try:
         marca, canal, grupos, productos = _parse_filtros()
         grupo = grupos[0] if grupos else None
-        rows = analitica.oportunidad_vectorizacion(producto=marca, top_n=50, grupo=grupo)
-        # Calcular buckets EXCLUSIVOS:
-        # stock_only_0 = PDV con stock exactamente 0 (no aparecen en último día)
-        # stock_only_1 = PDV con stock=1 (están en <=1 pero NO en =0)
-        # stock_only_2 = PDV con stock=2 (están en <=2 pero NO en <=1)
-        # stock_only_3 = PDV con stock=3 (están en <=3 pero NO en <=2)
+        producto = productos[0] if productos else None
+        rows = analitica.oportunidad_vectorizacion(
+            marca=marca, producto=producto, grupo=grupo
+        )
+        # Calcular buckets EXCLUSIVOS de stock
         for r in rows:
             s0 = r.get("STOCK_0", 0) or 0
             s1 = r.get("STOCK_1", 0) or 0
             s2 = r.get("STOCK_2", 0) or 0
             s3 = r.get("STOCK_3", 0) or 0
             r["stock_solo_0"] = s0
-            r["stock_solo_1"] = max(s1 - s0, 0)
             r["stock_solo_2"] = max(s2 - s1, 0)
-            r["stock_solo_3"] = max(s3 - s2, 0)
             uni = r.get("UNIVERSO_PDV", 0) or 1
             pres = r.get("PDV_PRESENCIA", 0) or 0
             r["cobertura_pct"] = round(pres / uni * 100, 1)
-        # Obtener fecha del último día de stock para mostrar en el dashboard
+        # Obtener fecha del último día de stock
         from agente import generar_pdfs as gp
         try:
             _, ultimo_dia_stock, _, _ = gp.detectar_ultimo_dia_stock_y_venta()
@@ -271,10 +268,18 @@ def tienda_perfecta_excel():
     try:
         import tempfile
         from datetime import datetime
+        marca, canal, grupos, productos = _parse_filtros()
+        grupo = grupos[0] if grupos else None
+        producto_filtro = productos[0] if productos else ""
         ts = datetime.now().strftime("%Y%m%d_%H%M")
         fname = f"vectorizacion_completo_{ts}.xlsx"
         ruta = os.path.join(tempfile.gettempdir(), fname)
-        analitica.exportar_vectorizacion_excel(producto="", ruta_salida=ruta)
+        analitica.exportar_vectorizacion_excel(
+            producto=producto_filtro,
+            ruta_salida=ruta,
+            marca=marca or "",
+            grupo=grupo or ""
+        )
         if not os.path.exists(ruta):
             return jsonify({"error": "No se pudo generar el archivo"}), 500
         return send_file(ruta, as_attachment=True, download_name=fname)

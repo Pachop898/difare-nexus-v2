@@ -695,18 +695,132 @@ def proyeccion_venta(horizonte_dias: int = 30) -> dict:
 _cache_pareto = None
 _cache_pareto_ts = 0
 
-def oportunidad_vectorizacion(producto: str | None = None,
-                              top_n: int = 20,
-                              grupo: str | None = None) -> list[dict]:
+def _calcular_universo_grupo(d: dict, raw_vals: list, farm_todo_f) -> int:
+    """Calcula universo de PDVs para un grupo específico usando 3 meses."""
+    _id = "CODIGOPDV" if "CODIGOPDV" in farm_todo_f.columns else "POS"
+    codigos_grupo = set(farm_todo_f[_id].dropna().unique()) if not farm_todo_f.empty else set()
+    df_todos_all = d["df_todos"]
+    df_farm_all = df_todos_all[df_todos_all["UNIDAD"] == "FARMACIAS"]
+    if not df_farm_all.empty and _id in df_farm_all.columns:
+        mask_grupo = df_farm_all[_id].isin(codigos_grupo)
+        if "GRUPOPDV" in df_farm_all.columns:
+            mask_grupo = mask_grupo | df_farm_all["GRUPOPDV"].isin(raw_vals)
+        df_farm_grupo = df_farm_all[mask_grupo]
+        _pv = set(df_farm_grupo[df_farm_grupo["VENTA NETA RECUPERO"] > 0][_id].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_grupo.columns else set()
+        _ps = set(df_farm_grupo[df_farm_grupo["STOCK"] > 0][_id].dropna().unique()) if "STOCK" in df_farm_grupo.columns else set()
+        return len(_pv | _ps) if (_pv or _ps) else len(codigos_grupo)
+    return len(codigos_grupo)
+
+
+def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
     """
-    Para cada producto Pareto, calcula:
-      - PDV con presencia (cualquier registro)
-      - PDV con stock 0 hoy
-      - venta perdida estimada = velocidad_promedio_cluster × #PDV faltantes
-    Si se pasa 'producto', filtra a ese.
-    Si se pasa 'grupo', recalcula pareto solo para PDVs de ese grupo.
-    Reusa calcular_pareto_farmacias del módulo legacy.
-    Cache de 1 hora para el cálculo pesado del Pareto completo (sin filtro de grupo).
+    Calcula DOI por PDV por producto y agrupa en buckets.
+    DOI = stock_actual / promedio(proy_mes_actual, venta_mes_ant, venta_2meses) * 30
+    """
+    df_todos = d["df_todos"]
+    farm_stock = d["farm_stock_ult"]
+    ultimo_dia = max(d["ultimo_dia_venta"], 1)
+    dias_mes = d.get("dias_mes", 30) or 30
+
+    # Filtrar solo farmacias
+    df_farm = df_farm_src if df_farm_src is not None else df_todos[df_todos["UNIDAD"] == "FARMACIAS"]
+
+    if df_farm.empty or "MES" not in df_farm.columns:
+        # Sin datos de meses → devolver rows sin DOI
+        for r in rows:
+            r["DOI_LE20"] = 0
+            r["DOI_20_30"] = 0
+            r["DOI_30_60"] = 0
+            r["DOI_GT60"] = 0
+        return rows
+
+    # Identificar los 3 meses: actual, anterior, 2 meses atrás
+    meses_ord = sorted(df_farm["MES"].dropna().unique())
+    mes_actual = meses_ord[-1] if meses_ord else None
+    mes_ant = meses_ord[-2] if len(meses_ord) >= 2 else None
+    mes_2ant = meses_ord[-3] if len(meses_ord) >= 3 else None
+
+    for r in rows:
+        idneptuno = r.get("IDNEPTUNO", "")
+        prod_farm = df_farm[df_farm["IDNEPTUNO"] == idneptuno]
+
+        # Stock por PDV (último día)
+        prod_stock = farm_stock[farm_stock["IDNEPTUNO"] == idneptuno] if not farm_stock.empty else pd.DataFrame()
+        if prod_stock.empty:
+            r["DOI_LE20"] = 0
+            r["DOI_20_30"] = 0
+            r["DOI_30_60"] = 0
+            r["DOI_GT60"] = 0
+            continue
+
+        stock_por_pdv = prod_stock.groupby("POS")["STOCK"].sum()
+        pdv_con_stock = stock_por_pdv[stock_por_pdv > 0]
+
+        if pdv_con_stock.empty:
+            r["DOI_LE20"] = 0
+            r["DOI_20_30"] = 0
+            r["DOI_30_60"] = 0
+            r["DOI_GT60"] = 0
+            continue
+
+        # Venta por PDV por mes
+        venta_por_pdv_mes = prod_farm.groupby(["POS", "MES"])["VENTA NETA RECUPERO"].sum().unstack(fill_value=0)
+
+        # Para cada PDV con stock, calcular DOI
+        doi_le20 = 0
+        doi_20_30 = 0
+        doi_30_60 = 0
+        doi_gt60 = 0
+
+        for pdv, stock_val in pdv_con_stock.items():
+            if stock_val <= 0:
+                continue
+            # Venta mes actual, mes anterior, 2 meses atrás
+            v_actual = float(venta_por_pdv_mes.loc[pdv, mes_actual]) if (pdv in venta_por_pdv_mes.index and mes_actual in venta_por_pdv_mes.columns) else 0
+            v_ant = float(venta_por_pdv_mes.loc[pdv, mes_ant]) if (pdv in venta_por_pdv_mes.index and mes_ant and mes_ant in venta_por_pdv_mes.columns) else 0
+            v_2ant = float(venta_por_pdv_mes.loc[pdv, mes_2ant]) if (pdv in venta_por_pdv_mes.index and mes_2ant and mes_2ant in venta_por_pdv_mes.columns) else 0
+
+            # Proyección del mes actual
+            proy_actual = (v_actual / ultimo_dia) * dias_mes if ultimo_dia > 0 else 0
+
+            # Promedio de los 3 valores
+            valores = [proy_actual, v_ant, v_2ant]
+            n_vals = sum(1 for v in valores if v > 0)
+            promedio = sum(valores) / max(n_vals, 1) if n_vals > 0 else 0
+
+            if promedio > 0:
+                doi = (stock_val / promedio) * 30
+            else:
+                doi = 999  # stock sin venta → DOI infinito → bucket >60
+
+            if doi <= 20:
+                doi_le20 += 1
+            elif doi <= 30:
+                doi_20_30 += 1
+            elif doi <= 60:
+                doi_30_60 += 1
+            else:
+                doi_gt60 += 1
+
+        r["DOI_LE20"] = doi_le20
+        r["DOI_20_30"] = doi_20_30
+        r["DOI_30_60"] = doi_30_60
+        r["DOI_GT60"] = doi_gt60
+
+    return rows
+
+
+def oportunidad_vectorizacion(producto: str | None = None,
+                              top_n: int = 0,
+                              grupo: str | None = None,
+                              marca: str | None = None) -> list[dict]:
+    """
+    Para cada producto activo, calcula presencia, stock buckets y DOI buckets.
+    - solo_pareto=False → devuelve TODOS los ítems con flag es_pareto
+    - Calcula DOI por PDV: stock / promedio(proy_actual, venta_ant, venta_2ant) * 30
+    Si se pasa 'marca' o 'producto', filtra por texto.
+    Si se pasa 'grupo', recalcula solo para PDVs de ese grupo.
+    Cache de 1 hora para el cálculo pesado (sin filtro de grupo).
     """
     global _cache_pareto, _cache_pareto_ts
 
@@ -730,29 +844,11 @@ def oportunidad_vectorizacion(producto: str | None = None,
         if "GRUPOPDV" in farm_todo_f.columns:
             farm_todo_f = farm_todo_f[farm_todo_f["GRUPOPDV"].isin(raw_vals)]
 
-        # Universo: PDVs del grupo con actividad en CUALQUIER mes (3 meses)
-        # Usar CODIGOPDV (código numérico) para evitar duplicados por variación de nombre
-        _id = "CODIGOPDV" if "CODIGOPDV" in farm_todo_f.columns else "POS"
-        # Paso 1: códigos del grupo según SAP actual
-        codigos_grupo = set(farm_todo_f[_id].dropna().unique()) if not farm_todo_f.empty else set()
-        # Paso 2: buscar en df_todos (3 meses) PDVs del grupo por GRUPOPDV O por código
-        df_todos_all = d["df_todos"]
-        df_farm_all = df_todos_all[df_todos_all["UNIDAD"] == "FARMACIAS"]
-        if not df_farm_all.empty and _id in df_farm_all.columns:
-            # Incluir PDVs que estén en el grupo (por GRUPOPDV) en cualquier mes
-            mask_grupo = df_farm_all[_id].isin(codigos_grupo)
-            if "GRUPOPDV" in df_farm_all.columns:
-                mask_grupo = mask_grupo | df_farm_all["GRUPOPDV"].isin(raw_vals)
-            df_farm_grupo = df_farm_all[mask_grupo]
-            _pv = set(df_farm_grupo[df_farm_grupo["VENTA NETA RECUPERO"] > 0][_id].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_grupo.columns else set()
-            _ps = set(df_farm_grupo[df_farm_grupo["STOCK"] > 0][_id].dropna().unique()) if "STOCK" in df_farm_grupo.columns else set()
-            universo_f = len(_pv | _ps) if (_pv or _ps) else len(codigos_grupo)
-        else:
-            universo_f = len(codigos_grupo)
+        universo_f = _calcular_universo_grupo(d, raw_vals, farm_todo_f)
 
         t0 = _time.time()
         pareto = gp.calcular_pareto_farmacias(
-            df_todos_f, farm_stock_f, farm_todo_f, universo_f
+            df_todos_f, farm_stock_f, farm_todo_f, universo_f, solo_pareto=False
         )
         if isinstance(pareto, pd.DataFrame):
             rows = pareto.to_dict(orient="records")
@@ -760,14 +856,21 @@ def oportunidad_vectorizacion(producto: str | None = None,
             rows = pareto
         else:
             rows = []
+
+        # Calcular DOI con datos filtrados por grupo
+        df_farm_grupo = df_todos_f[df_todos_f["UNIDAD"] == "FARMACIAS"]
+        d_grupo = {**d, "farm_stock_ult": farm_stock_f}
+        rows = _calcular_doi_buckets(d_grupo, rows, df_farm_src=df_farm_grupo)
+
         elapsed = round(_time.time() - t0, 1)
-        print(f"[vectorización] Pareto grupo={grupo} calculado en {elapsed}s — {len(rows)} productos")
+        print(f"[vectorización] TP grupo={grupo} calculado en {elapsed}s — {len(rows)} productos")
     else:
         # Sin grupo: cachear el cálculo pesado del pareto completo
         if _cache_pareto is None or (now - _cache_pareto_ts) > _CACHE_TTL:
             t0 = _time.time()
             pareto = gp.calcular_pareto_farmacias(
-                d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"]
+                d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"],
+                solo_pareto=False
             )
             if isinstance(pareto, pd.DataFrame):
                 _cache_pareto = pareto.to_dict(orient="records")
@@ -775,19 +878,28 @@ def oportunidad_vectorizacion(producto: str | None = None,
                 _cache_pareto = pareto
             else:
                 _cache_pareto = []
+
+            # Calcular DOI para todos
+            _cache_pareto = _calcular_doi_buckets(d, _cache_pareto)
+
             _cache_pareto_ts = now
             elapsed = round(_time.time() - t0, 1)
-            print(f"[vectorización] Pareto calculado en {elapsed}s — {len(_cache_pareto)} productos")
+            print(f"[vectorización] TP calculado en {elapsed}s — {len(_cache_pareto)} productos")
 
-        rows = list(_cache_pareto)  # copia para no mutar cache
+        rows = [dict(r) for r in _cache_pareto]  # deep copy
 
+    # Filtros de texto: marca y/o producto
+    if marca:
+        m = marca.lower()
+        rows = [r for r in rows if m in str(r.get("MARCA", "")).lower()]
     if producto:
         p = producto.lower()
-        rows = [r for r in rows
-                if p in str(r.get("PRODUCTO", "")).lower()
-                or p in str(r.get("MARCA", "")).lower()]
+        rows = [r for r in rows if p in str(r.get("PRODUCTO", "")).lower()]
 
-    return rows[:top_n]
+    if top_n > 0:
+        rows = rows[:top_n]
+
+    return rows
 
 
 # ══════════════════════════════════════════════════════════════
@@ -835,7 +947,8 @@ def sugerido_stock(grupo_farmacia: str | None = None,
 # 6) Export Excel de vectorización (pregunta KAM #6)
 # ══════════════════════════════════════════════════════════════
 
-def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "") -> str:
+def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
+                                 marca: str = "", grupo: str = "") -> str:
     """
     Genera el Informe de Vectorización semanal COMPLETO.
     Una pestaña por MARCA con los productos Pareto (80% de venta).
@@ -852,16 +965,25 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "") -> s
       Grupo B (Autoservicio + Pharmacys + Dromayor): SIN VECT→12, Stock=0→12, <=1→11, <=2→10, <=3→9
     """
     d = cargar_data()
-    farm_todo = d["farm_todo"]
-    farm_stock = d["farm_stock_ult"]
+    farm_todo = d["farm_todo"].copy()
+    farm_stock = d["farm_stock_ult"].copy()
 
-    # Obtener Pareto (80% de venta)
+    # Filtrar por grupo si aplica
+    if grupo:
+        raw_vals = _grupo_raw_values([grupo])
+        if "GRUPOPDV" in farm_todo.columns:
+            farm_todo = farm_todo[farm_todo["GRUPOPDV"].isin(raw_vals)]
+        if "GRUPOPDV" in farm_stock.columns:
+            farm_stock = farm_stock[farm_stock["GRUPOPDV"].isin(raw_vals)]
+
+    # Obtener productos (filtrados por marca/grupo/producto si se pasan)
     pareto_rows = oportunidad_vectorizacion(
         producto=producto if producto else None,
-        top_n=100
+        marca=marca if marca else None,
+        grupo=grupo if grupo else None,
     )
     if not pareto_rows:
-        raise ValueError("No se encontraron productos Pareto para generar el informe")
+        raise ValueError("No se encontraron productos para generar el informe")
 
     # Universo de PDV activos
     universo_pdv = set(farm_todo["POS"].dropna().unique())
