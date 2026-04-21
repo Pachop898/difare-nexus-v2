@@ -1154,12 +1154,12 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <select id="tp-filtro-grupo" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
       <option value="">Todos los grupos</option>
     </select>
-    <div class="ms-container" style="position:relative;display:inline-block;min-width:200px">
-      <div id="tp-prod-label" onclick="document.getElementById('tp-prod-drop').classList.toggle('show')"
+    <div class="ms-wrap" style="position:relative;display:inline-block;min-width:200px">
+      <div id="tp-prod-label" onclick="toggleTPProd()"
            style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:200px">
         Todos los productos <span style="font-size:10px">▼</span>
       </div>
-      <div id="tp-prod-drop" class="ms-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-top:4px;z-index:200"></div>
+      <div id="tp-prod-drop" class="ms-drop"></div>
     </div>
   </div>
 
@@ -1544,6 +1544,11 @@ let _filtroProductos=[]; // array de strings
 function toggleMS(name){
   const drop=document.getElementById("ms-"+name+"-drop");
   // Close other dropdowns first
+  document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
+  drop.classList.toggle("open");
+}
+function toggleTPProd(){
+  const drop=document.getElementById("tp-prod-drop");
   document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
   drop.classList.toggle("open");
 }
