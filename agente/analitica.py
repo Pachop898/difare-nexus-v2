@@ -148,6 +148,11 @@ def cargar_data(force: bool = False) -> dict:
     universo = gp.calcular_universo_pdv(carpeta)
     stock_por_mes = gp.cargar_stock_por_mes(carpeta)
     ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
+
+    # Pre-cachear SAP DataFrame para evitar re-lectura de Excel en cada request
+    sap_path = gp.detectar_archivo_sap(carpeta)
+    df_sap_cached = pd.read_excel(sap_path) if sap_path else None
+
     elapsed = round(_time.time() - t0, 1)
     print(f"[analitica] Data cargada en {elapsed}s — {len(df_todos)} filas")
 
@@ -161,6 +166,7 @@ def cargar_data(force: bool = False) -> dict:
         "ultimo_dia_venta": ultimo_dia,
         "dias_mes": dias_mes,
         "mes_completo": mes_completo,
+        "df_sap": df_sap_cached,
     })
     _cache_ts = _time.time()
     return _cache
@@ -466,10 +472,9 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
     dias_mes = d.get("dias_mes", 30) or 30
 
     # ── Venta del SAP (mes actual) ──
-    # Cargar SAP directamente para obtener venta del mes en curso
-    # (df_todos mezcla Ene-Mar + Abr, daría DOIS artificialmente bajo)
-    carpeta = _carpeta()
-    sap_path = gp.detectar_archivo_sap(carpeta)
+    # Usar SAP cacheado en cargar_data() (no re-leer Excel del disco)
+    df_sap = d.get("df_sap")
+
     # Helper: aplicar filtros comunes a un DataFrame
     def _aplicar_filtros(df):
         _df = df
@@ -483,16 +488,14 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
             _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
         return _df
 
-    if sap_path:
-        df_sap = pd.read_excel(sap_path)
-        df_sap = _aplicar_filtros(df_sap)
-        venta_sap_farm_dist = float(df_sap[df_sap["UNIDAD"].isin(
+    if df_sap is not None:
+        df_sap_f = _aplicar_filtros(df_sap)
+        venta_sap_farm_dist = float(df_sap_f[df_sap_f["UNIDAD"].isin(
             ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
-        venta_sap_farm = float(df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
+        venta_sap_farm = float(df_sap_f[df_sap_f["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
     else:
         # Fallback: usar df_todos (menos preciso)
-        df_todos = d["df_todos"]
-        df_todos = _aplicar_filtros(df_todos)
+        df_todos = _aplicar_filtros(d["df_todos"])
         venta_sap_farm_dist = float(df_todos[df_todos["UNIDAD"].isin(
             ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
         venta_sap_farm = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
@@ -564,12 +567,9 @@ def dois_por_producto(umbral_min: float = 0, umbral_max: float = 9999,
     farm_stock = d["farm_stock_ult"]
     ultimo_dia = max(d["ultimo_dia_venta"], 1)
 
-    # Venta SAP del mes actual
-    carpeta = _carpeta()
-    sap_path = gp.detectar_archivo_sap(carpeta)
-    if sap_path:
-        df_sap = pd.read_excel(sap_path)
-    else:
+    # Venta SAP del mes actual (usar cache, no re-leer Excel)
+    df_sap = d.get("df_sap")
+    if df_sap is None:
         df_sap = d["df_todos"]
 
     # Productos Pareto (80% de la venta en farmacias)

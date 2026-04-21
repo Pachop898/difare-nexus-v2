@@ -1385,8 +1385,9 @@ function showModule(id){
   if(mod) mod.classList.add('active');
   const btn=document.querySelector('.sidebar-item[data-mod="'+id+'"]');
   if(btn) btn.classList.add('active');
-  // Trigger lazy-load si es necesario
+  // Trigger lazy-load de módulos no cargados al inicio
   if(id==='visibilidad' && !window._visLoaded){cargarVisibilidad();window._visLoaded=true;}
+  if(id==='tienda-perfecta' && !window._tpLoaded){cargarTP();cargarDist();window._tpLoaded=true;window._distLoaded=true;}
   if(id==='campo'){
     const ifr=document.getElementById('campo-iframe');
     if(ifr && (!ifr.src || ifr.src==='about:blank' || ifr.getAttribute('src')==='about:blank')){
@@ -1402,10 +1403,19 @@ function logout(){
   window.location.href="/";
 }
 
-async function api(path){
-  const r=await fetch(S+path,{headers:AH});
-  if(r.status===401){logout();return null;}
-  return r.json();
+async function api(path, timeoutMs=20000){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const r=await fetch(S+path,{headers:AH,signal:ctrl.signal});
+    clearTimeout(tid);
+    if(r.status===401){logout();return null;}
+    return r.json();
+  }catch(e){
+    clearTimeout(tid);
+    if(e.name==='AbortError') throw new Error('Tiempo de espera agotado. Intenta de nuevo.');
+    throw e;
+  }
 }
 
 // Descarga directa Excel Tienda Perfecta
@@ -1453,22 +1463,22 @@ function mostrarError(msg){
 }
 
 // ── Esperar a que el servidor termine de cargar data ──
-async function waitForReady(maxWait=120){
+async function waitForReady(maxWait=60){
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
   overlay.style.display="flex";
   const t0=Date.now();
   while((Date.now()-t0)<maxWait*1000){
     try{
-      const r=await fetch(S+"/api/ready");
+      const r=await fetch(S+"/api/ready",{signal:AbortSignal.timeout(5000)});
       const d=await r.json();
-      if(d.ready){return true;} // overlay se oculta después de cargar todo
+      if(d.ready){return true;}
     }catch(e){}
     const elapsed=Math.round((Date.now()-t0)/1000);
     if(sub)sub.textContent=`Procesando datos... ${elapsed}s`;
-    await new Promise(r=>setTimeout(r,2000));
+    await new Promise(r=>setTimeout(r,1000));
   }
-  return true; // proceder de todas formas — overlay se oculta después
+  return true; // proceder de todas formas
 }
 
 // ── Filtro global (marca, canal, grupo multi, producto multi) ──
@@ -1883,12 +1893,24 @@ async function cargarDist(){
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
   if(sub)sub.textContent="Cargando dashboard...";
+  // Timeout de seguridad: si en 25s no cargó, quitar overlay y mostrar lo que haya
+  const safetyTimer=setTimeout(()=>{
+    if(overlay && overlay.style.display!=='none'){
+      overlay.style.display="none";
+      console.warn("Overlay removido por timeout de seguridad (25s)");
+    }
+  },25000);
   try{
     await cargarFiltros();
-    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart(),cargarTP(),cargarDist()]);
-    // Cargar visibilidad en background (no bloquea el overlay)
-    cargarVisibilidad();window._visLoaded=true;
+    // Solo cargar lo visible del dashboard (KPIs + DOIS + Chart)
+    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart()]);
+    // TP, Dist y Visibilidad se cargan lazy cuando el usuario los necesite
+    window._tpLoaded=false; window._distLoaded=false; window._visLoaded=false;
+  }catch(e){
+    console.error("Error en carga inicial:",e);
+    if(sub)sub.textContent="Error al cargar. Recarga la página.";
   }finally{
+    clearTimeout(safetyTimer);
     if(overlay)overlay.style.display="none";
   }
 })(); // fin de la función principal de carga
