@@ -270,7 +270,27 @@ def tienda_perfecta_excel():
 
 
 # ══════════════════════════════════════════════════════════════
-# 6) Distribución Numérica — clientes por mes con filtro marca
+# 6) Plan de Visibilidad — análisis InStore
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/visibilidad", methods=["GET"])
+def plan_visibilidad():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from agente.analitica_visibilidad import analisis_visibilidad
+        result = analisis_visibilidad()
+        return jsonify(result), 200
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# 7) Distribución Numérica — clientes por mes con filtro marca
 # ══════════════════════════════════════════════════════════════
 
 @bp.route("/dist-numerica-chart", methods=["GET"])

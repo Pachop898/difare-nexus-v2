@@ -1094,6 +1094,69 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div id="tp-full-table" style="overflow:auto"></div>
 </div>
 
+<!-- ══════ Plan de Visibilidad InStore ══════ -->
+<section class="card p-6 mt-6" id="vis-section">
+  <div class="mb-4">
+    <h2 class="text-lg font-semibold section-title">Plan de Visibilidad InStore</h2>
+    <p id="vis-fecha" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
+    <p class="text-sm" style="color:var(--muted)">Comparativa venta PDV con exhibición vs sin exhibición · Stock productos negociados</p>
+  </div>
+
+  <!-- KPIs Visibilidad -->
+  <div id="vis-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">PDVs en Plan</p>
+      <p id="vis-k-pdv" style="color:var(--white);font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">Venta Prom c/Visibilidad</p>
+      <p id="vis-k-vcon" style="color:var(--gold);font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">Venta Prom s/Visibilidad</p>
+      <p id="vis-k-vsin" style="color:var(--white);font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">Lift Visibilidad</p>
+      <p id="vis-k-lift" style="font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">Cobertura Plan</p>
+      <p id="vis-k-cob" style="color:var(--white);font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+    <div class="card p-3" style="background:var(--card2);border:1px solid var(--border)">
+      <p style="color:var(--muted);font-size:11px;margin:0">PDVs con Stock</p>
+      <p id="vis-k-stock" style="color:#10b981;font-size:22px;font-weight:700;margin:2px 0">—</p>
+    </div>
+  </div>
+
+  <!-- Tabla por Elemento -->
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border)">
+          <th class="px-2 py-2 text-left" style="color:var(--gold)">Elemento</th>
+          <th class="px-2 py-2 text-left" style="color:var(--gold)">Acuerdo</th>
+          <th class="px-2 py-2 text-center" style="color:var(--gold)">PDVs</th>
+          <th class="px-2 py-2 text-center" style="color:var(--gold)">SKUs</th>
+          <th class="px-2 py-2 text-right" style="color:var(--gold)">Venta Total</th>
+          <th class="px-2 py-2 text-right" style="color:var(--gold)">$/PDV Con</th>
+          <th class="px-2 py-2 text-right" style="color:var(--gold)">$/PDV Sin</th>
+          <th class="px-2 py-2 text-center" style="color:var(--gold)">Lift %</th>
+          <th class="px-2 py-2 text-center" style="color:var(--gold)">Cobertura</th>
+          <th class="px-2 py-2 text-center" style="color:#ef4444">Stock=0</th>
+          <th class="px-2 py-2 text-center" style="color:#f59e0b">Stock=1</th>
+          <th class="px-2 py-2 text-center" style="color:#3b82f6">Stock=2</th>
+          <th class="px-2 py-2 text-center" style="color:#8b5cf6">Stock≥3</th>
+        </tr>
+      </thead>
+      <tbody id="vis-body">
+        <tr><td colspan="13" class="text-center py-6" style="color:var(--muted)">Cargando plan de visibilidad...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <!-- Chat Gerencial integrado -->
 <section class="chat-section p-6 mt-6" id="chat-section">
   <div class="flex items-center justify-between mb-4">
@@ -1508,6 +1571,53 @@ async function cargarTP(){
   }catch(e){mostrarError(e.message||e);}
 }
 
+// Plan de Visibilidad InStore — carga
+async function cargarVisibilidad(){
+  try{
+    const d=await api("/api/visibilidad"); if(!d) return;
+    if(d.error){console.warn("Visibilidad:",d.error);return;}
+    const k=d.kpis||{};
+    // KPIs
+    document.getElementById("vis-k-pdv").textContent=k.total_pdv_plan||"—";
+    document.getElementById("vis-k-vcon").textContent=fmtUSD(k.venta_prom_con||0);
+    document.getElementById("vis-k-vsin").textContent=fmtUSD(k.venta_prom_sin||0);
+    const liftEl=document.getElementById("vis-k-lift");
+    const lift=k.lift_pct||0;
+    liftEl.textContent=(lift>0?"+":"")+lift+"%";
+    liftEl.style.color=lift>0?"#10b981":lift<0?"#ef4444":"var(--white)";
+    document.getElementById("vis-k-cob").textContent=(k.cobertura_pct||0)+"%";
+    document.getElementById("vis-k-stock").textContent=(k.pdv_con_stock||0)+" / "+(k.total_pdv_plan||0);
+    // Fecha
+    if(k.ultimo_dia_stock){
+      const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      const hoy=new Date();
+      document.getElementById("vis-fecha").textContent="Stock al cierre del "+k.ultimo_dia_stock+" de "+meses[hoy.getMonth()+1]+" "+hoy.getFullYear();
+    }
+    // Tabla por elemento
+    const elems=d.elementos||[];
+    const body=document.getElementById("vis-body");
+    if(!elems.length){body.innerHTML='<tr><td colspan="13" class="text-center py-4" style="color:var(--muted)">Sin datos de visibilidad</td></tr>';return;}
+    body.innerHTML=elems.map(e=>{
+      const lc=e.lift_pct>0?"#10b981":e.lift_pct<0?"#ef4444":"var(--muted)";
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td class="px-2 py-1.5 font-medium" style="color:var(--white)">${e.elemento}</td>
+        <td class="px-2 py-1.5" style="color:var(--muted);font-size:11px">${e.acuerdo}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${e.n_pdv_plan}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${e.n_skus}</td>
+        <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(e.venta_total)}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(e.venta_prom_con)}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(e.venta_prom_sin)}</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:${lc}">${e.lift_pct>0?"+":""}${e.lift_pct}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:${e.cobertura_pct>=90?'#10b981':e.cobertura_pct>=70?'#f59e0b':'#ef4444'}">${e.cobertura_pct}%</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${e.stock_0||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#f59e0b">${e.stock_1||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${e.stock_2||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#8b5cf6">${e.stock_3plus||""}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){console.warn("visibilidad error:",e);}
+}
+
 // Distribución Numérica — carga reutilizable
 let _distFiltrosInit=false;
 async function cargarDist(){
@@ -1541,6 +1651,8 @@ async function cargarDist(){
   try{
     await cargarFiltros();
     await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+    // Cargar visibilidad en background (no bloquea el overlay)
+    cargarVisibilidad();
   }finally{
     if(overlay)overlay.style.display="none";
   }
