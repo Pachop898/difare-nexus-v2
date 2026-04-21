@@ -115,7 +115,10 @@ def dois():
     auth, err = _autorizar()
     if err: return err
     try:
-        return jsonify(analitica.dias_inventario()), 200
+        marca, canal, grupos, productos = _parse_filtros()
+        producto = productos[0] if productos else None
+        return jsonify(analitica.dias_inventario(
+            producto=producto, marca=marca, canal=canal, grupos=grupos)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

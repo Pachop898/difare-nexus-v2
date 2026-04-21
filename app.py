@@ -1736,7 +1736,7 @@ async function cargarChart(){
 
 async function cargarDOIS(){
   try{
-    const d=await api("/api/dois"); if(!d) return;
+    const d=await api("/api/dois"+_qs()); if(!d) return;
     if(d.error){console.warn("DOIS:",d.error);return;}
     const fmtM=v=>"$"+Math.round(v||0).toLocaleString("es-EC");
     document.getElementById("dois-stk-bod").textContent=fmtM(d.stock_bodega_valorizado);

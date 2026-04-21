@@ -445,7 +445,8 @@ def pareto_pdv() -> list[dict]:
 # 2) Días de inventario y proyección de venta (pregunta KAM #2)
 # ══════════════════════════════════════════════════════════════
 
-def dias_inventario(producto: str | None = None) -> dict:
+def dias_inventario(producto: str | None = None, marca: str | None = None,
+                    canal: str | None = None, grupos: list | None = None) -> dict:
     """
     DOIS (Días de Inventario) — fórmula idéntica al reporte PDF de agente-excel.
 
@@ -469,25 +470,35 @@ def dias_inventario(producto: str | None = None) -> dict:
     # (df_todos mezcla Ene-Mar + Abr, daría DOIS artificialmente bajo)
     carpeta = _carpeta()
     sap_path = gp.detectar_archivo_sap(carpeta)
+    # Helper: aplicar filtros comunes a un DataFrame
+    def _aplicar_filtros(df):
+        _df = df
+        if marca and "MARCA" in _df.columns:
+            _df = _df[_df["MARCA"].astype(str).str.upper() == marca.upper()]
+        if canal and "CANAL" in _df.columns:
+            _df = _df[_df["CANAL"].astype(str).str.upper() == canal.upper()]
+        if grupos and "GRUPOPDV" in _df.columns:
+            _df = _df[_df["GRUPOPDV"].isin(grupos)]
+        if producto:
+            _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        return _df
+
     if sap_path:
         df_sap = pd.read_excel(sap_path)
-        if producto:
-            df_sap = df_sap[df_sap["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        df_sap = _aplicar_filtros(df_sap)
         venta_sap_farm_dist = float(df_sap[df_sap["UNIDAD"].isin(
             ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
         venta_sap_farm = float(df_sap[df_sap["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
     else:
         # Fallback: usar df_todos (menos preciso)
         df_todos = d["df_todos"]
-        if producto:
-            df_todos = df_todos[df_todos["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        df_todos = _aplicar_filtros(df_todos)
         venta_sap_farm_dist = float(df_todos[df_todos["UNIDAD"].isin(
             ["FARMACIAS", "DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum())
         venta_sap_farm = float(df_todos[df_todos["UNIDAD"] == "FARMACIAS"]["VENTA NETA RECUPERO"].sum())
 
-    if producto:
-        bodega = bodega[bodega["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
-        farm_stock = farm_stock[farm_stock["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+    bodega = _aplicar_filtros(bodega)
+    farm_stock = _aplicar_filtros(farm_stock)
 
     # Stock VALORIZADO (USD)
     stock_bodega_val = float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
