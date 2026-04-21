@@ -33,7 +33,7 @@ def get_anthropic_client():
 # ── CONFIG ──
 JWT_SECRET = os.getenv("JWT_SECRET", "difare-nexus-secret-cambiar-en-produccion")
 JWT_EXPIRY = 1800  # 30 minutos — sesión corta para seguridad
-APP_VERSION = "2026-04-21a"  # Cambiar en cada deploy para invalidar sesiones viejas
+APP_VERSION = str(int(time.time()))  # Automático: cada deploy genera versión única
 # data.db: buscar en varias ubicaciones (Railway, Vercel, local)
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _DB_CANDIDATES = [
@@ -1405,7 +1405,7 @@ function _resetInact(){
   _inactTimer=setTimeout(()=>{
     alert("Sesión cerrada por inactividad.");
     logout();
-  },5*60*1000);
+  },10*60*1000);
 }
 ["click","mousemove","keydown","scroll","touchstart"].forEach(e=>document.addEventListener(e,_resetInact,{passive:true}));
 _resetInact();
@@ -2474,7 +2474,7 @@ function entrarApp(){
   document.getElementById("userLabel").textContent=US;mostrarGrupos();
   // Auto-logout por inactividad (5 min)
   let _it;
-  function _ri(){clearTimeout(_it);_it=setTimeout(()=>{alert("Sesión cerrada por inactividad.");cerrarSesion();},5*60*1000);}
+  function _ri(){clearTimeout(_it);_it=setTimeout(()=>{alert("Sesión cerrada por inactividad.");cerrarSesion();},10*60*1000);}
   ["click","mousemove","keydown","scroll","touchstart"].forEach(e=>document.addEventListener(e,_ri,{passive:true}));
   _ri();
 }
