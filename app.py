@@ -826,7 +826,26 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .row:hover{background:rgba(46,117,182,0.08)}
   .spinner{border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s;z-index:50;touch-action:none}
+  /* Sidebar */
+  .sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:var(--navy2);border-right:1px solid var(--border);z-index:30;display:flex;flex-direction:column;overflow-y:auto}
+  .sidebar-logo{padding:20px 18px 12px;border-bottom:1px solid var(--border)}
+  .sidebar-nav{flex:1;padding:12px 10px}
+  .sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;color:var(--muted);font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:2px;text-decoration:none;border:none;background:none;width:100%;text-align:left}
+  .sidebar-item:hover{background:rgba(46,117,182,0.12);color:var(--white)}
+  .sidebar-item.active{background:rgba(201,168,76,0.12);color:var(--gold)}
+  .sidebar-item .si-icon{width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .sidebar-user{padding:14px 18px;border-top:1px solid var(--border);font-size:12px}
+  .sidebar-divider{height:1px;background:var(--border);margin:8px 10px}
+  .content-area{margin-left:260px;min-height:100vh}
+  .module{display:none}
+  .module.active{display:block}
+  @media(max-width:820px){
+    .sidebar{width:60px;overflow:hidden}
+    .sidebar .si-label,.sidebar-user span,.sidebar-user div,.sidebar-logo>div{display:none}
+    .sidebar-item{padding:10px;justify-content:center}
+    .content-area{margin-left:60px}
+  }
+  .fab{position:fixed;bottom:26px;right:26px;background:var(--navy2);color:var(--gold);padding:14px 22px;border-radius:999px;border:1px solid var(--border);box-shadow:0 10px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-weight:600;transition:transform .15s;z-index:50;touch-action:none;display:none}
   .fab:hover{transform:translateY(-2px);border-color:var(--gold)}
   @media(max-width:768px){.fab{padding:10px 14px;font-size:12px;gap:6px;bottom:80px;right:14px}.fab svg{width:14px;height:14px}}
   table{font-variant-numeric:tabular-nums;color:var(--white)}
@@ -865,33 +884,69 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </head>
 <body class="min-h-screen">
 
-<header class="sticky top-0 z-20" style="background:var(--navy2);border-bottom:1px solid var(--border)">
-  <div class="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div style="display:flex;align-items:center;gap:10px">
       <img src="/branding/orion_v3_icon_app_64.png" alt="ORION" style="width:36px;height:36px;border-radius:10px">
       <div>
-        <div class="text-[15px] font-semibold" style="font-family:'Playfair Display',serif;color:var(--gold)">ORION</div>
-        <div class="text-xs" style="color:var(--muted)">Dashboard Gerencial</div>
+        <div style="font-family:'Playfair Display',serif;color:var(--gold);font-size:15px;font-weight:700">ORION</div>
+        <div style="color:var(--muted);font-size:11px">Inteligencia Comercial</div>
       </div>
     </div>
-    <div class="flex items-center gap-3 text-sm">
-      <span style="color:var(--muted)">Hola, <b id="userLabel" style="color:var(--white)">—</b></span>
-      <span id="rolBadge" class="px-2 py-1 rounded-md text-xs font-medium" style="background:rgba(201,168,76,0.15);color:var(--gold)">—</span>
-      <button onclick="exportarPDFScreenshot()" title="Captura de pantalla" class="text-sm" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:4px 10px;border-radius:8px;cursor:pointer;background:rgba(201,168,76,0.08)">📸 Screenshot</button>
-      <button onclick="exportarPDFReporte()" title="Reporte PDF completo" class="text-sm" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:4px 10px;border-radius:8px;cursor:pointer;background:rgba(201,168,76,0.08)">📄 Reporte PDF</button>
-      <button onclick="logout()" class="text-sm" style="color:var(--muted);border:1px solid var(--border);padding:4px 10px;border-radius:8px;cursor:pointer;background:transparent">Salir</button>
+  </div>
+  <div class="sidebar-nav">
+    <button class="sidebar-item active" data-mod="dashboard" onclick="showModule('dashboard')">
+      <span class="si-icon">📊</span><span class="si-label">Dashboard</span>
+    </button>
+    <button class="sidebar-item" data-mod="tienda-perfecta" onclick="showModule('tienda-perfecta')">
+      <span class="si-icon">🏪</span><span class="si-label">Tienda Perfecta</span>
+    </button>
+    <button class="sidebar-item" data-mod="visibilidad" onclick="showModule('visibilidad')">
+      <span class="si-icon">👁</span><span class="si-label">Plan Visibilidad</span>
+    </button>
+    <button class="sidebar-item" data-mod="asistente" onclick="showModule('asistente')">
+      <span class="si-icon">🤖</span><span class="si-label">Asistente Gerencial</span>
+    </button>
+    <div class="sidebar-divider"></div>
+    <button class="sidebar-item" data-mod="agenda" onclick="showModule('agenda')">
+      <span class="si-icon">📅</span><span class="si-label">Agenda KAM</span>
+    </button>
+    <button class="sidebar-item" data-mod="presentaciones" onclick="showModule('presentaciones')">
+      <span class="si-icon">📑</span><span class="si-label">Presentaciones</span>
+    </button>
+    <button class="sidebar-item" data-mod="onepager" onclick="showModule('onepager')">
+      <span class="si-icon">📋</span><span class="si-label">One-Pager</span>
+    </button>
+    <div class="sidebar-divider"></div>
+    <button class="sidebar-item" onclick="window.location='/?modo=campo'">
+      <span class="si-icon">🏥</span><span class="si-label">Vista Campo</span>
+    </button>
+  </div>
+  <div class="sidebar-user">
+    <span style="color:var(--muted)">Hola, <b id="userLabel" style="color:var(--white)">—</b></span>
+    <span id="rolBadge" style="display:inline-block;margin-left:6px;background:rgba(201,168,76,0.15);color:var(--gold);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">—</span>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="exportarPDFScreenshot()" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:3px 8px;border-radius:6px;cursor:pointer;background:rgba(201,168,76,0.08);font-size:11px">📸</button>
+      <button onclick="exportarPDFReporte()" style="color:var(--gold);border:1px solid rgba(201,168,76,0.3);padding:3px 8px;border-radius:6px;cursor:pointer;background:rgba(201,168,76,0.08);font-size:11px">📄</button>
+      <button onclick="logout()" style="color:var(--muted);border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;background:transparent;font-size:11px">Salir</button>
     </div>
   </div>
-</header>
+</nav>
 
+<!-- Content Area -->
+<div class="content-area">
 <main class="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
 
   <!-- Loading overlay -->
-  <div id="loading-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div id="loading-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--navy);flex-direction:column;align-items:center;justify-content:center;gap:16px;">
     <div style="border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:48px;height:48px;animation:spin 1s linear infinite"></div>
     <div style="color:var(--gold);font-size:16px;font-weight:500">Cargando datos...</div>
     <div id="loading-sub" style="color:var(--muted);font-size:13px">Esto toma ~30 segundos después de cada deploy</div>
   </div>
+
+  <!-- ══════ MÓDULO: Dashboard ══════ -->
+  <div id="mod-dashboard" class="module active">
 
   <!-- Filtros globales -->
   <style>
@@ -1015,6 +1070,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="relative" style="height:360px"><canvas id="chartCanalMes"></canvas></div>
   </section>
 
+  </div><!-- /mod-dashboard -->
+
+  <!-- ══════ MÓDULO: Tienda Perfecta ══════ -->
+  <div id="mod-tienda-perfecta" class="module">
+
   <!-- Tienda Perfecta + Distribución Numérica -->
   <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
     <!-- Oportunidades Tienda Perfecta Farmacias -->
@@ -1079,7 +1139,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <div class="relative" style="height:280px"><canvas id="chartDistNumerica"></canvas></div>
     </section>
   </div>
-</main>
 
 <!-- Fullscreen overlay Tienda Perfecta -->
 <div id="tp-fullscreen" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--navy);overflow:auto;padding:20px">
@@ -1094,6 +1153,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div id="tp-full-table" style="overflow:auto"></div>
 </div>
 
+  </div><!-- /mod-tienda-perfecta -->
+
+  <!-- ══════ MÓDULO: Plan de Visibilidad ══════ -->
+  <div id="mod-visibilidad" class="module">
 <!-- ══════ Plan de Visibilidad InStore ══════ -->
 <section class="card p-6 mt-6" id="vis-section">
   <div class="mb-4">
@@ -1157,8 +1220,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 </section>
 
-<!-- Chat Gerencial integrado -->
-<section class="chat-section p-6 mt-6" id="chat-section">
+  </div><!-- /mod-visibilidad -->
+
+  <!-- ══════ MÓDULO: Asistente Gerencial ══════ -->
+  <div id="mod-asistente" class="module">
+<section class="chat-section p-6" id="chat-section">
   <div class="flex items-center justify-between mb-4">
     <div>
       <h2 class="text-lg font-semibold">Asistente Gerencial</h2>
@@ -1187,11 +1253,52 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </button>
   </div>
 </section>
+  </div><!-- /mod-asistente -->
 
-<a href="/?modo=campo" target="_blank" class="fab" id="fab-btn">
-  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-  <span class="fab-text">Consultar farmacia</span>
-</a>
+  <!-- ══════ MÓDULO: Agenda KAM (Placeholder) ══════ -->
+  <div id="mod-agenda" class="module">
+    <section class="card p-6">
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:16px">📅</div>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Agenda KAM</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Tus reuniones con buyers — con pendientes y preparación AI.</p>
+        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
+          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════ MÓDULO: Presentaciones (Placeholder) ══════ -->
+  <div id="mod-presentaciones" class="module">
+    <section class="card p-6">
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:16px">📑</div>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Presentaciones</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Genera decks automáticos con data actualizada para tus reuniones con clientes.</p>
+        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
+          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════ MÓDULO: One-Pager (Placeholder) ══════ -->
+  <div id="mod-onepager" class="module">
+    <section class="card p-6">
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:16px">📋</div>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">One-Pager</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Resumen ejecutivo para la reunión con el buyer — KPIs, alertas y recomendaciones AI.</p>
+        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
+          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</main>
+</div><!-- /content-area -->
 
 <script>
 const S=window.location.origin;
@@ -1210,6 +1317,19 @@ Chart.defaults.color="#7a8fbb";
 Chart.defaults.borderColor="rgba(46,117,182,0.15)";
 const fmtUSD = v => "$"+Math.round(v||0).toLocaleString("es-EC");
 const fmtShort = v => {v=v||0; if(v>=1e6)return "$"+(v/1e6).toFixed(1)+"M"; if(v>=1e3)return "$"+(v/1e3).toFixed(0)+"K"; return "$"+Math.round(v)}
+
+// ── Sidebar: Navegación por módulos ──
+function showModule(id){
+  document.querySelectorAll('.module').forEach(m=>m.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item[data-mod]').forEach(b=>b.classList.remove('active'));
+  const mod=document.getElementById('mod-'+id);
+  if(mod) mod.classList.add('active');
+  const btn=document.querySelector('.sidebar-item[data-mod="'+id+'"]');
+  if(btn) btn.classList.add('active');
+  // Trigger lazy-load si es necesario
+  if(id==='visibilidad' && !window._visLoaded){cargarVisibilidad();window._visLoaded=true;}
+  window.scrollTo(0,0);
+}
 
 function logout(){
   fetch(S+"/logout",{method:"POST",headers:AH,body:"{}"}).catch(()=>{});
@@ -1652,7 +1772,7 @@ async function cargarDist(){
     await cargarFiltros();
     await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
     // Cargar visibilidad en background (no bloquea el overlay)
-    cargarVisibilidad();
+    cargarVisibilidad();window._visLoaded=true;
   }finally{
     if(overlay)overlay.style.display="none";
   }
