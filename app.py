@@ -2262,35 +2262,42 @@ try:
     def _prewarm():
         global _data_ready
         try:
-            # 1) Si los Excels son más nuevos que data.db, regenerar antes de cachear
-            if _excels_mas_nuevos_que_db():
-                _regenerar_data_db()
-            else:
-                print("[v2] data.db al día con excels/, no hace falta regenerar")
-            # 2) Pre-cargar cache del dashboard (pandas sobre excels/)
+            # PASO 1: Cargar data en pandas → dashboard funcional ASAP
             from agente import analitica
             print("[v2] Pre-cargando data de Excels en background…")
             analitica.cargar_data()
             _data_ready = True
-            print("[v2] Data cacheada OK, dashboard listo para servir rápido")
-            # 3) Pre-calcular Tienda Perfecta (pareto) en background
-            try:
-                print("[v2] Pre-calculando Pareto (Tienda Perfecta)…")
-                analitica.oportunidad_vectorizacion(top_n=50)
-                print("[v2] Pareto pre-calculado OK")
-            except Exception as e2:
-                print(f"[v2] Pareto pre-warm falló: {e2}")
-            # 4) Pre-calcular Visibilidad en background
-            try:
-                from agente import analitica_visibilidad as av
-                print("[v2] Pre-calculando Visibilidad…")
-                av.analisis_visibilidad()
-                print("[v2] Visibilidad pre-calculada OK")
-            except Exception as e3:
-                print(f"[v2] Visibilidad pre-warm falló: {e3}")
+            print("[v2] ✅ Dashboard LISTO — data cacheada OK")
         except Exception as e:
-            _data_ready = True  # marcar como ready igualmente para no bloquear para siempre
-            print(f"[v2] Pre-warm falló (se cargará en la primera petición): {e}")
+            _data_ready = True
+            print(f"[v2] Pre-warm data falló: {e}")
+
+        # PASO 2: Tareas secundarias (NO bloquean el dashboard)
+        try:
+            print("[v2] Pre-calculando Pareto (Tienda Perfecta)…")
+            analitica.oportunidad_vectorizacion(top_n=50)
+            print("[v2] ✅ Pareto OK")
+        except Exception as e:
+            print(f"[v2] Pareto falló: {e}")
+
+        try:
+            from agente import analitica_visibilidad as av
+            print("[v2] Pre-calculando Visibilidad…")
+            av.analisis_visibilidad()
+            print("[v2] ✅ Visibilidad OK")
+        except Exception as e:
+            print(f"[v2] Visibilidad falló: {e}")
+
+        # PASO 3: Regenerar SQLite si es necesario (en último lugar, no urgente)
+        try:
+            if _excels_mas_nuevos_que_db():
+                print("[v2] Regenerando data.db en background…")
+                _regenerar_data_db()
+                print("[v2] ✅ data.db regenerado")
+            else:
+                print("[v2] data.db al día, no regenerar")
+        except Exception as e:
+            print(f"[v2] Regenerar data.db falló: {e}")
     threading.Thread(target=_prewarm, daemon=True).start()
 except Exception as e:
     _data_ready = True  # sin blueprint, no hay pre-warm que esperar

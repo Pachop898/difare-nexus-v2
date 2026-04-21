@@ -104,7 +104,15 @@ def _carpeta_excels():
 
 
 def _cargar_sap_df() -> pd.DataFrame:
-    """Carga el DataFrame SAP completo."""
+    """Carga el DataFrame SAP — reutiliza cache de analitica si existe."""
+    try:
+        from agente import analitica
+        cached = analitica._cache.get("df_sap")
+        if cached is not None:
+            return cached.copy()
+    except Exception:
+        pass
+    # Fallback: leer del disco
     carpeta = _carpeta_excels()
     sap_path = gp.detectar_archivo_sap(carpeta)
     if not sap_path:
