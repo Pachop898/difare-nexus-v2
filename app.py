@@ -32,7 +32,8 @@ def get_anthropic_client():
 
 # ── CONFIG ──
 JWT_SECRET = os.getenv("JWT_SECRET", "difare-nexus-secret-cambiar-en-produccion")
-JWT_EXPIRY = 86400
+JWT_EXPIRY = 1800  # 30 minutos — sesión corta para seguridad
+APP_VERSION = "2026-04-21a"  # Cambiar en cada deploy para invalidar sesiones viejas
 # data.db: buscar en varias ubicaciones (Railway, Vercel, local)
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _DB_CANDIDATES = [
@@ -119,7 +120,7 @@ def _b64d(s):
 
 def crear_jwt(usuario):
     h = _b64e(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    p = _b64e(json.dumps({"sub": usuario, "exp": int(time.time()) + JWT_EXPIRY, "iat": int(time.time())}).encode())
+    p = _b64e(json.dumps({"sub": usuario, "exp": int(time.time()) + JWT_EXPIRY, "iat": int(time.time()), "ver": APP_VERSION}).encode())
     s = hmac.new(JWT_SECRET.encode(), f"{h}.{p}".encode(), hashlib.sha256).digest()
     return f"{h}.{p}.{_b64e(s)}"
 
@@ -134,6 +135,9 @@ def verificar_jwt(token):
             return None
         datos = json.loads(_b64d(p))
         if datos.get("exp", 0) < time.time():
+            return None
+        # Rechazar tokens de versiones anteriores (fuerza re-login tras deploy)
+        if datos.get("ver") != APP_VERSION:
             return None
         return datos.get("sub")
     except Exception:
@@ -1393,6 +1397,19 @@ document.getElementById("userLabel").textContent=US||"—";
 document.getElementById("rolBadge").textContent=RL==="admin"?"Admin":"Gerencial";
 
 const AH={"Content-Type":"application/json","Authorization":"Bearer "+TK};
+
+// ── Auto-logout por inactividad (5 minutos) ──
+let _inactTimer;
+function _resetInact(){
+  clearTimeout(_inactTimer);
+  _inactTimer=setTimeout(()=>{
+    alert("Sesión cerrada por inactividad.");
+    logout();
+  },5*60*1000);
+}
+["click","mousemove","keydown","scroll","touchstart"].forEach(e=>document.addEventListener(e,_resetInact,{passive:true}));
+_resetInact();
+
 // Dark theme global para Chart.js
 Chart.defaults.color="#7a8fbb";
 Chart.defaults.borderColor="rgba(46,117,182,0.15)";
@@ -2455,6 +2472,11 @@ function entrarApp(){
   document.getElementById("loginScreen").style.display="none";
   const a=document.getElementById("appScreen");a.style.display="flex";a.style.flexDirection="column";a.style.height="100vh";
   document.getElementById("userLabel").textContent=US;mostrarGrupos();
+  // Auto-logout por inactividad (5 min)
+  let _it;
+  function _ri(){clearTimeout(_it);_it=setTimeout(()=>{alert("Sesión cerrada por inactividad.");cerrarSesion();},5*60*1000);}
+  ["click","mousemove","keydown","scroll","touchstart"].forEach(e=>document.addEventListener(e,_ri,{passive:true}));
+  _ri();
 }
 function cerrarSesion(){
   fetch(S+"/logout",{method:"POST",headers:AH(),body:"{}"}).catch(()=>{});
