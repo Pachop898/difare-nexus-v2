@@ -919,7 +919,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <span class="si-icon">📋</span><span class="si-label">One-Pager</span>
     </button>
     <div class="sidebar-divider"></div>
-    <button class="sidebar-item" onclick="window.location='/?modo=campo'">
+    <button class="sidebar-item" data-mod="campo" onclick="showModule('campo')">
       <span class="si-icon">🏥</span><span class="si-label">Vista Campo</span>
     </button>
   </div>
@@ -1297,6 +1297,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </section>
   </div>
 
+  <!-- ══════ MÓDULO: Vista Campo (iframe embebido) ══════ -->
+  <div id="mod-campo" class="module" style="margin:-24px;height:100vh">
+    <iframe id="campo-iframe" src="about:blank" style="width:calc(100% + 48px);height:100%;border:none"></iframe>
+  </div>
+
 </main>
 </div><!-- /content-area -->
 
@@ -1328,6 +1333,12 @@ function showModule(id){
   if(btn) btn.classList.add('active');
   // Trigger lazy-load si es necesario
   if(id==='visibilidad' && !window._visLoaded){cargarVisibilidad();window._visLoaded=true;}
+  if(id==='campo'){
+    const ifr=document.getElementById('campo-iframe');
+    if(ifr && (!ifr.src || ifr.src==='about:blank' || ifr.getAttribute('src')==='about:blank')){
+      ifr.src='/?modo=campo';
+    }
+  }
   window.scrollTo(0,0);
 }
 
