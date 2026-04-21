@@ -173,9 +173,11 @@ def cargar_data(force: bool = False) -> dict:
 
 
 def invalidar_cache():
-    global _cache_ts
+    global _cache_ts, _cache_pareto, _cache_pareto_ts
     _cache.clear()
     _cache_ts = 0
+    _cache_pareto = None
+    _cache_pareto_ts = 0
 
 
 # ══════════════════════════════════════════════════════════════
@@ -664,6 +666,9 @@ def proyeccion_venta(horizonte_dias: int = 30) -> dict:
 # 3) Vectorización y venta perdida (pregunta KAM #3)
 # ══════════════════════════════════════════════════════════════
 
+_cache_pareto = None
+_cache_pareto_ts = 0
+
 def oportunidad_vectorizacion(producto: str | None = None,
                               top_n: int = 20) -> list[dict]:
     """
@@ -673,18 +678,30 @@ def oportunidad_vectorizacion(producto: str | None = None,
       - venta perdida estimada = velocidad_promedio_cluster × #PDV faltantes
     Si se pasa 'producto', filtra a ese.
     Reusa calcular_pareto_farmacias del módulo legacy.
+    Cache de 1 hora para el cálculo pesado del Pareto completo.
     """
+    global _cache_pareto, _cache_pareto_ts
+
     d = cargar_data()
-    pareto = gp.calcular_pareto_farmacias(
-        d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"]
-    )
-    # gp.calcular_pareto_farmacias devuelve estructura — la normalizamos
-    if isinstance(pareto, pd.DataFrame):
-        rows = pareto.to_dict(orient="records")
-    elif isinstance(pareto, list):
-        rows = pareto
-    else:
-        rows = []
+    now = _time.time()
+
+    # Cachear el cálculo pesado del pareto (sin filtro)
+    if _cache_pareto is None or (now - _cache_pareto_ts) > _CACHE_TTL:
+        t0 = _time.time()
+        pareto = gp.calcular_pareto_farmacias(
+            d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"]
+        )
+        if isinstance(pareto, pd.DataFrame):
+            _cache_pareto = pareto.to_dict(orient="records")
+        elif isinstance(pareto, list):
+            _cache_pareto = pareto
+        else:
+            _cache_pareto = []
+        _cache_pareto_ts = now
+        elapsed = round(_time.time() - t0, 1)
+        print(f"[vectorización] Pareto calculado en {elapsed}s — {len(_cache_pareto)} productos")
+
+    rows = list(_cache_pareto)  # copia para no mutar cache
 
     if producto:
         p = producto.lower()
@@ -692,8 +709,6 @@ def oportunidad_vectorizacion(producto: str | None = None,
                 if p in str(r.get("PRODUCTO", "")).lower()
                 or p in str(r.get("MARCA", "")).lower()]
 
-    marcas_en_pareto = set(r.get("MARCA", "?") for r in rows)
-    print(f"[vectorización] Pareto: {len(rows)} productos, marcas: {sorted(marcas_en_pareto)}")
     return rows[:top_n]
 
 

@@ -1837,7 +1837,7 @@ async function cargarDOIS(){
 async function cargarTP(){
   try{
     document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
-    const d=await api("/api/tienda-perfecta"+_tpQs(),45000); if(!d) return;
+    const d=await api("/api/tienda-perfecta"+_tpQs(),90000); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     // Mostrar fecha del último stock en subtítulos
     if(d.ultimo_dia_stock){
@@ -1886,7 +1886,7 @@ async function cargarTP(){
 // Plan de Visibilidad InStore — carga
 async function cargarVisibilidad(){
   try{
-    const d=await api("/api/visibilidad",45000); if(!d) return;
+    const d=await api("/api/visibilidad",90000); if(!d) return;
     if(d.error){console.warn("Visibilidad:",d.error);return;}
     const k=d.kpis||{};
     // KPIs
@@ -2258,6 +2258,21 @@ try:
             analitica.cargar_data()
             _data_ready = True
             print("[v2] Data cacheada OK, dashboard listo para servir rápido")
+            # 3) Pre-calcular Tienda Perfecta (pareto) en background
+            try:
+                print("[v2] Pre-calculando Pareto (Tienda Perfecta)…")
+                analitica.oportunidad_vectorizacion(top_n=50)
+                print("[v2] Pareto pre-calculado OK")
+            except Exception as e2:
+                print(f"[v2] Pareto pre-warm falló: {e2}")
+            # 4) Pre-calcular Visibilidad en background
+            try:
+                from agente import analitica_visibilidad as av
+                print("[v2] Pre-calculando Visibilidad…")
+                av.analisis_visibilidad()
+                print("[v2] Visibilidad pre-calculada OK")
+            except Exception as e3:
+                print(f"[v2] Visibilidad pre-warm falló: {e3}")
         except Exception as e:
             _data_ready = True  # marcar como ready igualmente para no bloquear para siempre
             print(f"[v2] Pre-warm falló (se cargará en la primera petición): {e}")
