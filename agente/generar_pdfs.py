@@ -55,7 +55,7 @@ def detectar_archivo_sap(carpeta="excels"):
                      "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
     for a in archivos:
         nombre = os.path.basename(a).upper()
-        if "EJEMPLO" in nombre:
+        if "EJEMPLO" in nombre or "PLAN" in nombre or "VISIBILIDAD" in nombre:
             continue
         es_mensual = any(m in nombre for m in meses_nombres) and "SAP" not in nombre
         if not es_mensual or "SAP" in nombre:
@@ -69,7 +69,7 @@ def detectar_archivo_mes_anterior(carpeta="excels"):
     historicos = []
     for a in archivos:
         nombre = os.path.basename(a).upper()
-        if "EJEMPLO" in nombre:
+        if "EJEMPLO" in nombre or "PLAN" in nombre or "VISIBILIDAD" in nombre:
             continue
         es_mensual = any(m in nombre for m in meses_nombres) and "SAP" not in nombre
         if es_mensual:
@@ -123,10 +123,17 @@ def cargar_todos_excels(carpeta="excels"):
     archivos = glob.glob(f"{carpeta}/*.xlsx") + glob.glob(f"{carpeta}/*.xls")
     dfs = []
     for a in archivos:
-        if "EJEMPLO" in os.path.basename(a).upper():
+        nombre_upper = os.path.basename(a).upper()
+        if "EJEMPLO" in nombre_upper:
+            continue
+        # Saltar archivos que no son de ventas/SAP (e.g. Plan_Visibilidad)
+        if "PLAN" in nombre_upper or "VISIBILIDAD" in nombre_upper:
             continue
         try:
             df = pd.read_excel(a)
+            # Solo procesar archivos con estructura de ventas (FECHA o DIA como columna)
+            if "FECHA" not in df.columns and "DIA" not in df.columns:
+                continue
             if "FECHA" in df.columns and "DIA" not in df.columns:
                 df["MES"] = df["FECHA"].astype(str).apply(
                     lambda x: x[:4] + "-" + x[4:6] if len(str(x)) == 6 else "desconocido")
@@ -144,10 +151,13 @@ def cargar_stock_por_mes(carpeta="excels"):
     meses_nombres = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
                      "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
     for a in archivos:
-        if "EJEMPLO" in os.path.basename(a).upper():
+        nombre_upper = os.path.basename(a).upper()
+        if "EJEMPLO" in nombre_upper or "PLAN" in nombre_upper or "VISIBILIDAD" in nombre_upper:
             continue
         try:
             df = pd.read_excel(a)
+            if "FECHA" not in df.columns and "DIA" not in df.columns:
+                continue
             nombre = os.path.basename(a).upper()
             es_sap = "SAP" in nombre or not any(m in nombre for m in meses_nombres)
             if "FECHA" in df.columns and "DIA" not in df.columns:
