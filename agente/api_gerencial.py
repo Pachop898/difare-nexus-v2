@@ -232,7 +232,8 @@ def tienda_perfecta():
     if err: return err
     try:
         marca, canal, grupos, productos = _parse_filtros()
-        rows = analitica.oportunidad_vectorizacion(producto=marca, top_n=50)
+        grupo = grupos[0] if grupos else None
+        rows = analitica.oportunidad_vectorizacion(producto=marca, top_n=50, grupo=grupo)
         # Calcular buckets EXCLUSIVOS:
         # stock_only_0 = PDV con stock exactamente 0 (no aparecen en último día)
         # stock_only_1 = PDV con stock=1 (están en <=1 pero NO en =0)

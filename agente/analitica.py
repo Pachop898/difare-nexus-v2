@@ -687,38 +687,72 @@ _cache_pareto = None
 _cache_pareto_ts = 0
 
 def oportunidad_vectorizacion(producto: str | None = None,
-                              top_n: int = 20) -> list[dict]:
+                              top_n: int = 20,
+                              grupo: str | None = None) -> list[dict]:
     """
     Para cada producto Pareto, calcula:
       - PDV con presencia (cualquier registro)
       - PDV con stock 0 hoy
       - venta perdida estimada = velocidad_promedio_cluster × #PDV faltantes
     Si se pasa 'producto', filtra a ese.
+    Si se pasa 'grupo', recalcula pareto solo para PDVs de ese grupo.
     Reusa calcular_pareto_farmacias del módulo legacy.
-    Cache de 1 hora para el cálculo pesado del Pareto completo.
+    Cache de 1 hora para el cálculo pesado del Pareto completo (sin filtro de grupo).
     """
     global _cache_pareto, _cache_pareto_ts
 
     d = cargar_data()
     now = _time.time()
 
-    # Cachear el cálculo pesado del pareto (sin filtro)
-    if _cache_pareto is None or (now - _cache_pareto_ts) > _CACHE_TTL:
+    # Si hay filtro de grupo, recalcular con datos filtrados (no cacheable genérico)
+    if grupo:
+        raw_vals = _grupo_raw_values([grupo])
+        df_todos_f = d["df_todos"].copy()
+        farm_stock_f = d["farm_stock_ult"].copy()
+        farm_todo_f = d["farm_todo"].copy()
+
+        if "GRUPOPDV" in df_todos_f.columns:
+            df_todos_f = df_todos_f[
+                (df_todos_f["UNIDAD"] != "FARMACIAS") |
+                (df_todos_f["GRUPOPDV"].isin(raw_vals))
+            ]
+        if "GRUPOPDV" in farm_stock_f.columns:
+            farm_stock_f = farm_stock_f[farm_stock_f["GRUPOPDV"].isin(raw_vals)]
+        if "GRUPOPDV" in farm_todo_f.columns:
+            farm_todo_f = farm_todo_f[farm_todo_f["GRUPOPDV"].isin(raw_vals)]
+
+        universo_f = int(farm_todo_f["POS"].nunique()) if not farm_todo_f.empty else 0
+
         t0 = _time.time()
         pareto = gp.calcular_pareto_farmacias(
-            d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"]
+            df_todos_f, farm_stock_f, farm_todo_f, universo_f
         )
         if isinstance(pareto, pd.DataFrame):
-            _cache_pareto = pareto.to_dict(orient="records")
+            rows = pareto.to_dict(orient="records")
         elif isinstance(pareto, list):
-            _cache_pareto = pareto
+            rows = pareto
         else:
-            _cache_pareto = []
-        _cache_pareto_ts = now
+            rows = []
         elapsed = round(_time.time() - t0, 1)
-        print(f"[vectorización] Pareto calculado en {elapsed}s — {len(_cache_pareto)} productos")
+        print(f"[vectorización] Pareto grupo={grupo} calculado en {elapsed}s — {len(rows)} productos")
+    else:
+        # Sin grupo: cachear el cálculo pesado del pareto completo
+        if _cache_pareto is None or (now - _cache_pareto_ts) > _CACHE_TTL:
+            t0 = _time.time()
+            pareto = gp.calcular_pareto_farmacias(
+                d["df_todos"], d["farm_stock_ult"], d["farm_todo"], d["universo_pdv"]
+            )
+            if isinstance(pareto, pd.DataFrame):
+                _cache_pareto = pareto.to_dict(orient="records")
+            elif isinstance(pareto, list):
+                _cache_pareto = pareto
+            else:
+                _cache_pareto = []
+            _cache_pareto_ts = now
+            elapsed = round(_time.time() - t0, 1)
+            print(f"[vectorización] Pareto calculado en {elapsed}s — {len(_cache_pareto)} productos")
 
-    rows = list(_cache_pareto)  # copia para no mutar cache
+        rows = list(_cache_pareto)  # copia para no mutar cache
 
     if producto:
         p = producto.lower()
