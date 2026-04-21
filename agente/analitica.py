@@ -721,7 +721,16 @@ def oportunidad_vectorizacion(producto: str | None = None,
         if "GRUPOPDV" in farm_todo_f.columns:
             farm_todo_f = farm_todo_f[farm_todo_f["GRUPOPDV"].isin(raw_vals)]
 
-        universo_f = int(farm_todo_f["POS"].nunique()) if not farm_todo_f.empty else 0
+        # Universo = PDV con venta>0 O stock>0 (mismo criterio que calcular_universo_pdv)
+        pdv_con_venta = set()
+        pdv_con_stock = set()
+        if not farm_todo_f.empty and "VENTA NETA RECUPERO" in farm_todo_f.columns:
+            pdv_con_venta = set(farm_todo_f[farm_todo_f["VENTA NETA RECUPERO"] > 0]["POS"].dropna().unique())
+        if not farm_stock_f.empty and "STOCK" in farm_stock_f.columns:
+            pdv_con_stock = set(farm_stock_f[farm_stock_f["STOCK"] > 0]["POS"].dropna().unique())
+        universo_f = len(pdv_con_venta | pdv_con_stock) if (pdv_con_venta or pdv_con_stock) else (
+            int(farm_todo_f["POS"].nunique()) if not farm_todo_f.empty else 0
+        )
 
         t0 = _time.time()
         pareto = gp.calcular_pareto_farmacias(
