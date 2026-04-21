@@ -538,7 +538,12 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
     farm_stock = _filtro_stock(farm_stock, es_bodega=False)
 
     # Stock VALORIZADO (USD)
-    stock_bodega_val = float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
+    # Si se filtra por canal o grupo SIN producto específico → bodega = 0
+    # (la bodega surte ambos canales; sin producto no tiene sentido mostrarla)
+    ocultar_bodega = (canal or grupos) and not producto
+    stock_bodega_val = 0 if ocultar_bodega else (
+        float(bodega["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in bodega.columns else 0
+    )
     stock_pdv_val = float(farm_stock["STOCK_VALORIZADO"].sum()) if "STOCK_VALORIZADO" in farm_stock.columns else 0
     stock_total_val = stock_bodega_val + stock_pdv_val
 
@@ -548,9 +553,16 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
 
     # DOIS = Stock Valorizado / Venta Diaria
     # Bodega y Total usan venta Farm+Dist; PDV usa solo Farm
-    dois_bodega = round(stock_bodega_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
-    dois_pdv = round(stock_pdv_val / venta_diaria_farm, 1) if venta_diaria_farm > 0 else None
-    dois_total = round(stock_total_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
+    # Si bodega oculta → DOIS bodega = None, Total usa misma venta que PDV
+    if ocultar_bodega:
+        dois_bodega = None
+        dois_pdv = round(stock_pdv_val / venta_diaria_farm, 1) if venta_diaria_farm > 0 else None
+        # Total = solo PDV cuando bodega oculta
+        dois_total = dois_pdv
+    else:
+        dois_bodega = round(stock_bodega_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
+        dois_pdv = round(stock_pdv_val / venta_diaria_farm, 1) if venta_diaria_farm > 0 else None
+        dois_total = round(stock_total_val / venta_diaria_farm_dist, 1) if venta_diaria_farm_dist > 0 else None
 
     # Clasificación: >30 días = OK, 15-30 = bajo, <15 = crítico
     if dois_total is not None:
