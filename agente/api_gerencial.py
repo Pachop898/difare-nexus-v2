@@ -110,6 +110,16 @@ def kpis():
         return jsonify({"error": str(e)}), 500
 
 
+@bp.route("/dois", methods=["GET"])
+def dois():
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        return jsonify(analitica.dias_inventario()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @bp.route("/filtros", methods=["GET"])
 def filtros():
     auth, err = _autorizar()

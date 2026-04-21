@@ -1058,6 +1058,50 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </section>
 
+  <!-- DOIS — Disponibilidad y Stock -->
+  <section class="card p-5" id="dois-section">
+    <div class="mb-3">
+      <h2 class="text-sm font-semibold" style="color:var(--gold);letter-spacing:0.5px">DISPONIBILIDAD Y STOCK</h2>
+      <p class="text-xs" style="color:var(--muted)" id="dois-sub">Días de inventario al cierre</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+      <!-- Bodega -->
+      <div style="background:rgba(30,64,120,0.35);padding:10px 14px;border-right:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock Bodega</span>
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS Bodega</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span id="dois-stk-bod" style="color:#60A5FA;font-size:18px;font-weight:700">—</span>
+          <span id="dois-bod" style="color:#60A5FA;font-size:18px;font-weight:700">—</span>
+        </div>
+      </div>
+      <!-- PDV -->
+      <div style="background:rgba(109,40,217,0.15);padding:10px 14px;border-right:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock PDV</span>
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS PDV</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span id="dois-stk-pdv" style="color:#a78bfa;font-size:18px;font-weight:700">—</span>
+          <span id="dois-pdv" style="color:#a78bfa;font-size:18px;font-weight:700">—</span>
+        </div>
+      </div>
+      <!-- Total -->
+      <div style="background:rgba(5,150,105,0.15);padding:10px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Stock Total</span>
+          <span style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">DOIS Total</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span id="dois-stk-tot" style="color:#10b981;font-size:18px;font-weight:700">—</span>
+          <span id="dois-tot" style="color:#10b981;font-size:18px;font-weight:700">—</span>
+        </div>
+      </div>
+    </div>
+    <p class="text-xs mt-2" style="color:var(--muted);font-size:10px" id="dois-formula"></p>
+  </section>
+
   <!-- Venta por canal por mes -->
   <section class="card p-6">
     <div class="flex items-center justify-between mb-4">
@@ -1075,10 +1119,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- ══════ MÓDULO: Tienda Perfecta ══════ -->
   <div id="mod-tienda-perfecta" class="module">
 
-  <!-- Tienda Perfecta + Distribución Numérica -->
-  <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+  <!-- Filtros propios de Tienda Perfecta -->
+  <div class="flex flex-wrap items-center gap-3 mb-4" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px">
+    <span style="color:var(--gold);font-size:12px;font-weight:600;letter-spacing:0.5px">FILTROS TP</span>
+    <select id="tp-filtro-marca" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
+      <option value="">Todas las marcas</option>
+    </select>
+    <select id="tp-filtro-grupo" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
+      <option value="">Todos los grupos</option>
+    </select>
+  </div>
+
     <!-- Oportunidades Tienda Perfecta Farmacias -->
-    <section class="card p-6 xl:col-span-3">
+    <section class="card p-6">
       <div class="mb-4">
         <h2 class="text-lg font-semibold section-title">Oportunidades Tienda Perfecta Farmacias</h2>
         <p id="tp-fecha-stock" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
@@ -1121,8 +1174,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
     </section>
 
-    <!-- Distribución Numérica Canal Distribución -->
-    <section class="card p-6 xl:col-span-2">
+    <!-- Distribución Numérica Canal Distribución (debajo) -->
+    <section class="card p-6 mt-6">
       <div class="flex items-center justify-between mb-3">
         <div>
           <h2 class="text-lg font-semibold section-title">Distribución Numérica</h2>
@@ -1130,15 +1183,16 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         </div>
       </div>
       <div class="mb-3">
-        <select id="dist-marca-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;width:100%">
+        <select id="dist-marca-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;max-width:300px">
           <option value="">Todas las marcas</option>
         </select>
       </div>
-      <div class="text-2xl font-semibold kpi-val mb-1" id="dist-total">—</div>
-      <div class="text-xs mb-3" style="color:var(--muted)" id="dist-sub">Clientes únicos (RUC) histórico</div>
+      <div class="flex items-baseline gap-3 mb-3">
+        <div class="text-2xl font-semibold kpi-val" id="dist-total">—</div>
+        <div class="text-xs" style="color:var(--muted)" id="dist-sub">Clientes únicos (RUC) histórico</div>
+      </div>
       <div class="relative" style="height:280px"><canvas id="chartDistNumerica"></canvas></div>
     </section>
-  </div>
 
 <!-- Fullscreen overlay Tienda Perfecta -->
 <div id="tp-fullscreen" style="display:none;position:fixed;inset:0;z-index:10000;background:var(--navy);overflow:auto;padding:20px">
@@ -1463,9 +1517,25 @@ function _updateMSLabel(containerId, labelId, defaultLabel){
   else{lbl.innerHTML=checked[0].substring(0,14)+'<span class="ms-badge">+'+( checked.length-1)+'</span>';}
 }
 
+async function cargarFiltrosTP(data){
+  // Poblar filtros independientes de Tienda Perfecta
+  const selM=document.getElementById("tp-filtro-marca");
+  const selG=document.getElementById("tp-filtro-grupo");
+  if(!selM||!selG)return;
+  // Solo poblar una vez
+  if(selM.options.length<=1){
+    (data.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selM.appendChild(o);});
+  }
+  if(selG.options.length<=1){
+    (data.grupos||[]).forEach(g=>{const o=document.createElement("option");o.value=g;o.textContent=g;selG.appendChild(o);});
+  }
+}
+
 async function cargarFiltros(){
   try{
     const d=await api("/api/filtros");if(!d)return;
+    // Poblar filtros de TP también
+    cargarFiltrosTP(d);
     // Marca (single select)
     const selMarca=document.getElementById("filtro-marca");
     (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selMarca.appendChild(o);});
@@ -1570,9 +1640,20 @@ async function _ejecutarFiltros(){
   if(_filtroLoading)return; // evitar requests simultáneos
   _filtroLoading=true;
   try{
-    await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart()]);
   }finally{_filtroLoading=false;}
 }
+
+// ── Filtros independientes para Tienda Perfecta ──
+function _tpQs(){
+  const params=[];
+  const m=document.getElementById("tp-filtro-marca");
+  const g=document.getElementById("tp-filtro-grupo");
+  if(m&&m.value)params.push("marca="+encodeURIComponent(m.value));
+  if(g&&g.value)params.push("grupo="+encodeURIComponent(g.value));
+  return params.length?"?"+params.join("&"):"";
+}
+function cargarTPConFiltros(){cargarTP();cargarDist();}
 
 // ── Funciones de carga individuales (reutilizables con filtros) ──
 async function cargarKPIs(){
@@ -1653,10 +1734,30 @@ async function cargarChart(){
   }catch(e){mostrarError(e.message||e);}
 }
 
+async function cargarDOIS(){
+  try{
+    const d=await api("/api/dois"); if(!d) return;
+    if(d.error){console.warn("DOIS:",d.error);return;}
+    const fmtM=v=>"$"+Math.round(v||0).toLocaleString("es-EC");
+    document.getElementById("dois-stk-bod").textContent=fmtM(d.stock_bodega_valorizado);
+    document.getElementById("dois-stk-pdv").textContent=fmtM(d.stock_pdv_valorizado);
+    document.getElementById("dois-stk-tot").textContent=fmtM(d.stock_total_valorizado);
+    document.getElementById("dois-bod").textContent=(d.dois_bodega||0).toFixed(1)+" días";
+    document.getElementById("dois-pdv").textContent=(d.dois_pdv||0).toFixed(1)+" días";
+    document.getElementById("dois-tot").textContent=(d.dois_total||0).toFixed(1)+" días";
+    document.getElementById("dois-sub").textContent="Stock al día "+d.dias_transcurridos+" · DOIS = Stock / Venta diaria SAP";
+    // Color del DOIS total según estado
+    const totEl=document.getElementById("dois-tot");
+    if(d.dois_total>30)totEl.style.color="#10b981";
+    else if(d.dois_total>=15)totEl.style.color="#f59e0b";
+    else totEl.style.color="#ef4444";
+  }catch(e){console.warn("DOIS error:",e);}
+}
+
 async function cargarTP(){
   try{
     document.getElementById("tp-body").innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
-    const d=await api("/api/tienda-perfecta"+_qs()); if(!d) return;
+    const d=await api("/api/tienda-perfecta"+_tpQs()); if(!d) return;
     if(d.error){mostrarError(d.error);return;}
     // Mostrar fecha del último stock en subtítulos
     if(d.ultimo_dia_stock){
@@ -1755,7 +1856,8 @@ async function cargarVisibilidad(){
 let _distFiltrosInit=false;
 async function cargarDist(){
   try{
-    const marca=_filtroMarca||document.getElementById("dist-marca-filter").value||"";
+    const tpM=document.getElementById("tp-filtro-marca");
+    const marca=(tpM&&tpM.value)||document.getElementById("dist-marca-filter").value||"";
     const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):"")); if(!d) return;
     if(d.error){return;}
     // Poblar select de marcas solo la primera vez
@@ -1783,7 +1885,7 @@ async function cargarDist(){
   if(sub)sub.textContent="Cargando dashboard...";
   try{
     await cargarFiltros();
-    await Promise.all([cargarKPIs(),cargarChart(),cargarTP(),cargarDist()]);
+    await Promise.all([cargarKPIs(),cargarDOIS(),cargarChart(),cargarTP(),cargarDist()]);
     // Cargar visibilidad en background (no bloquea el overlay)
     cargarVisibilidad();window._visLoaded=true;
   }finally{
