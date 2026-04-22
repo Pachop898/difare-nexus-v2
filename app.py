@@ -1924,14 +1924,18 @@ function _actualizarProductosTP(){
   _updateMSLabel("tp-prod-drop","tp-prod-label","Todos los productos");
 }
 
+let _filtrosYaCargados=false;
 async function cargarFiltros(){
+  if(_filtrosYaCargados) return; // evitar duplicar opciones en retries
   try{
     const d=await api("/api/filtros");if(!d)return;
-    // Poblar filtros de TP también
-    cargarFiltrosTP(d);
+    // Poblar filtros de TP también (en try separado para no bloquear dashboard)
+    try{ cargarFiltrosTP(d); }catch(e2){console.warn("filtrosTP:",e2);}
     // Marca (single select)
     const selMarca=document.getElementById("filtro-marca");
-    (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selMarca.appendChild(o);});
+    if(selMarca.options.length<=1){
+      (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selMarca.appendChild(o);});
+    }
     selMarca.addEventListener("change",async()=>{
       _filtroMarca=selMarca.value;
       // Cascading: reload productos filtered by marca
@@ -1940,7 +1944,9 @@ async function cargarFiltros(){
     });
     // Canal (single select)
     const selCanal=document.getElementById("filtro-canal");
-    (d.canales||[]).forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;selCanal.appendChild(o);});
+    if(selCanal.options.length<=1){
+      (d.canales||[]).forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;selCanal.appendChild(o);});
+    }
     selCanal.addEventListener("change",()=>{_filtroCanal=selCanal.value;aplicarFiltros();});
     // Grupo PDV (multi-select) — auto-selecciona canal Farmacias
     _poblarMS("ms-grupo-drop",d.grupos||[],"ms-grupo-label","Todos los grupos",()=>{
@@ -1964,6 +1970,7 @@ async function cargarFiltros(){
       _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
       aplicarFiltros();
     });
+    _filtrosYaCargados=true;
   }catch(e){console.warn("filtros:",e);}
 }
 
