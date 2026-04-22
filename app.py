@@ -830,6 +830,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .row:hover{background:rgba(46,117,182,0.08)}
   .spinner{border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;width:18px;height:18px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes tpProg{0%{width:5%;margin-left:0}50%{width:40%;margin-left:30%}100%{width:5%;margin-left:95%}}
   /* Sidebar */
   .sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:var(--navy2);border-right:1px solid var(--border);z-index:30;display:flex;flex-direction:column;overflow-y:auto}
   .sidebar-logo{padding:20px 18px 12px;border-bottom:1px solid var(--border)}
@@ -2158,10 +2159,28 @@ async function cargarDOIS(){
 }
 
 async function cargarTP(){
+  const body=document.getElementById("tp-body");
+  const msgs=["Conectando con el servidor…","Procesando datos de stock…","Calculando DOI por PDV…","Analizando cobertura…","Casi listo…"];
+  let msgIdx=0;
+  function _progHTML(txt){
+    return `<tr><td colspan="14" class="text-center py-6">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div style="width:200px;height:4px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div style="height:100%;background:var(--gold);border-radius:4px;animation:tpProg 2s ease-in-out infinite"></div>
+        </div>
+        <span style="color:var(--muted);font-size:13px" id="tp-prog-txt">${txt}</span>
+      </div>
+    </td></tr>`;
+  }
+  body.innerHTML=_progHTML(msgs[0]);
+  const progTimer=setInterval(()=>{
+    msgIdx=Math.min(msgIdx+1,msgs.length-1);
+    const el=document.getElementById("tp-prog-txt");
+    if(el) el.textContent=msgs[msgIdx];
+  },6000);
   try{
-    document.getElementById("tp-body").innerHTML='<tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr>';
-    const d=await api("/api/tienda-perfecta"+_tpQs(),90000); if(!d) return;
-    if(d.error){mostrarError(d.error);return;}
+    const d=await api("/api/tienda-perfecta"+_tpQs(),150000); clearInterval(progTimer); if(!d) return;
+    if(d.error){clearInterval(progTimer);mostrarError(d.error);return;}
     if(d.ultimo_dia_stock){
       const dia=d.ultimo_dia_stock;
       const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -2174,7 +2193,6 @@ async function cargarTP(){
       if(elSubFull) elSubFull.textContent=fechaTxt;
     }
     const filas=d.filas||[];
-    const body=document.getElementById("tp-body");
     if(!filas.length){body.innerHTML='<tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
     body.innerHTML=filas.map(f=>{
       const v=f.VENTA||f.venta_total||0;
@@ -2208,7 +2226,7 @@ async function cargarTP(){
         <td class="px-2 py-1.5 text-center" style="color:#8b5cf6">${d4||""}</td>
       </tr>`;
     }).join("");
-  }catch(e){mostrarError(e.message||e);}
+  }catch(e){clearInterval(progTimer);mostrarError(e.message||e);}
 }
 
 // Plan de Visibilidad InStore — carga
@@ -2607,6 +2625,22 @@ try:
             print("[v2] ✅ Pareto OK")
         except Exception as e:
             print(f"[v2] Pareto falló: {e}")
+
+        # PASO 2b: Pre-calentar grupos más usados para que no haya timeout
+        try:
+            d = analitica.cargar_data()
+            fs = d.get("farm_stock_ult")
+            if fs is not None and hasattr(fs, 'columns') and "GRUPOPDV" in fs.columns:
+                grupos_top = fs["GRUPOPDV"].value_counts().head(5).index.tolist()
+                for g in grupos_top:
+                    try:
+                        print(f"[v2] Pre-calculando grupo: {g}…")
+                        analitica.oportunidad_vectorizacion(grupo=g, top_n=1)
+                    except Exception:
+                        pass
+                print(f"[v2] ✅ {len(grupos_top)} grupos pre-cacheados")
+        except Exception as e:
+            print(f"[v2] Pre-warm grupos falló: {e}")
 
         try:
             from agente import analitica_visibilidad as av
