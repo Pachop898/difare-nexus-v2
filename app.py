@@ -1175,13 +1175,21 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <p id="tp-fecha-stock" style="color:var(--gold);font-size:13px;font-weight:600;margin:2px 0 4px"></p>
         <p class="text-sm" style="color:var(--muted)">Todos los ítems activos · <span style="color:var(--gold)">★ resaltados = Pareto 80%</span></p>
       </div>
-      <div class="mb-3" style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="mb-3" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <a id="btn-tp-excel" href="#" onclick="descargarTPExcel(event)"
            style="display:inline-flex;align-items:center;gap:6px;background:var(--gold);color:var(--navy);padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;transition:opacity .2s"
            onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Descargar Excel
         </a>
+        <!-- Filtro tipo PDV para Excel -->
+        <div class="ms-wrap" style="position:relative;display:inline-block;min-width:220px">
+          <div id="tp-tipopdv-label" onclick="toggleTPTipoPdv()"
+               style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:220px">
+            Filtro Excel: Default <span style="font-size:10px">▼</span>
+          </div>
+          <div id="tp-tipopdv-drop" class="ms-drop" style="min-width:240px"></div>
+        </div>
         <button onclick="abrirTPFullscreen()"
            style="display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--gold);padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--gold);cursor:pointer;transition:opacity .2s"
            onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
@@ -1657,9 +1665,12 @@ async function descargarTPExcel(e){
   btn.innerHTML='<span style="display:inline-flex;align-items:center;gap:6px">Generando…<span style="border:2px solid var(--navy);border-top-color:transparent;border-radius:50%;width:14px;height:14px;display:inline-block;animation:spin 1s linear infinite"></span></span>';
   btn.style.pointerEvents="none";btn.style.opacity="0.7";
   try{
-    const qs=_tpQs();
-    const sep=qs.includes("?")?"&":"?";
-    const r=await fetch(S+"/api/tienda-perfecta-excel"+qs+sep+"token="+encodeURIComponent(TK));
+    let qs=_tpQs();
+    // Agregar filtro tipo PDV
+    const tipos=_getTipoPdvChecked();
+    const tipoParams=tipos.map(t=>"tipo_pdv="+encodeURIComponent(t)).join("&");
+    qs+=(qs.includes("?")?"&":"?")+tipoParams;
+    const r=await fetch(S+"/api/tienda-perfecta-excel"+qs+(qs.includes("?")?"&":"?")+"token="+encodeURIComponent(TK));
     if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||"Error al generar");return;}
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
@@ -1732,6 +1743,83 @@ function toggleTPProd(){
   document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
   drop.classList.toggle("open");
 }
+function toggleTPTipoPdv(){
+  const drop=document.getElementById("tp-tipopdv-drop");
+  document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
+  drop.classList.toggle("open");
+}
+
+// Inicializar filtro tipo PDV para Excel
+const _tipoPdvOpciones=[
+  {value:"sin_vectorizar", label:"Sin Vectorizar"},
+  {value:"stock_0", label:"Stock = 0"},
+  {value:"doi_lte20", label:"DOI ≤ 20 días"},
+  {value:"doi_20_30", label:"DOI 20-30 días"},
+  {value:"doi_30_60", label:"DOI 30-60 días"},
+  {value:"doi_gt60", label:"DOI > 60 días"}
+];
+const _tipoPdvDefaults=["sin_vectorizar","stock_0","doi_lte20"];
+
+function _initTipoPdvFilter(){
+  const drop=document.getElementById("tp-tipopdv-drop");
+  drop.innerHTML="";
+  // Botones Todos / Default
+  const bar=document.createElement("div");
+  bar.style.cssText="display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border)";
+  const btnAll=document.createElement("button");
+  btnAll.textContent="✓ Todos";
+  btnAll.style.cssText="flex:1;padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--gold);color:var(--gold);background:rgba(201,168,76,0.1);cursor:pointer";
+  btnAll.addEventListener("click",()=>{
+    drop.querySelectorAll("input[type=checkbox]").forEach(cb=>{cb.checked=true;});
+    _updateTipoPdvLabel();
+  });
+  const btnDef=document.createElement("button");
+  btnDef.textContent="✕ Default";
+  btnDef.style.cssText="flex:1;padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--muted);color:var(--muted);background:transparent;cursor:pointer";
+  btnDef.addEventListener("click",()=>{
+    drop.querySelectorAll("input[type=checkbox]").forEach(cb=>{
+      cb.checked=_tipoPdvDefaults.includes(cb.value);
+    });
+    _updateTipoPdvLabel();
+  });
+  bar.appendChild(btnAll);bar.appendChild(btnDef);
+  drop.appendChild(bar);
+  // Items
+  _tipoPdvOpciones.forEach(opt=>{
+    const lbl=document.createElement("label");
+    const cb=document.createElement("input");
+    cb.type="checkbox";cb.value=opt.value;
+    cb.checked=_tipoPdvDefaults.includes(opt.value);
+    cb.addEventListener("change",_updateTipoPdvLabel);
+    const txt=document.createTextNode(opt.label);
+    lbl.appendChild(cb);lbl.appendChild(txt);
+    drop.appendChild(lbl);
+  });
+  _updateTipoPdvLabel();
+}
+
+function _updateTipoPdvLabel(){
+  const all=Array.from(document.querySelectorAll("#tp-tipopdv-drop input[type=checkbox]"));
+  const checked=all.filter(cb=>cb.checked);
+  const lbl=document.getElementById("tp-tipopdv-label");
+  // Verificar si es la selección default
+  const isDefault=checked.length===_tipoPdvDefaults.length && checked.every(cb=>_tipoPdvDefaults.includes(cb.value));
+  const isAll=checked.length===all.length;
+  if(isAll){lbl.innerHTML='Filtro Excel: Todos <span style="font-size:10px">▼</span>';}
+  else if(isDefault||checked.length===0){lbl.innerHTML='Filtro Excel: Default <span style="font-size:10px">▼</span>';}
+  else if(checked.length===1){lbl.innerHTML=checked[0].parentElement.textContent.trim()+' <span style="font-size:10px">▼</span>';}
+  else{lbl.innerHTML=checked[0].parentElement.textContent.trim()+'<span class="ms-badge">+'+(checked.length-1)+'</span> <span style="font-size:10px">▼</span>';}
+}
+
+function _getTipoPdvChecked(){
+  const all=Array.from(document.querySelectorAll("#tp-tipopdv-drop input[type=checkbox]"));
+  const checked=all.filter(cb=>cb.checked);
+  // Si ninguno seleccionado → default
+  if(checked.length===0) return _tipoPdvDefaults;
+  return checked.map(cb=>cb.value);
+}
+// Inicializar al cargar
+setTimeout(_initTipoPdvFilter, 100);
 // Close dropdowns when clicking outside
 document.addEventListener("click",e=>{
   if(!e.target.closest(".ms-wrap")){

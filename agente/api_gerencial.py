@@ -271,6 +271,10 @@ def tienda_perfecta_excel():
         grupo = grupos[0] if grupos else None
         # productos puede ser lista o vacío
         producto_filtro = productos[0] if productos and len(productos) == 1 else ""
+        # tipos_pdv: filtro de qué PDVs incluir en el Excel
+        tipos_pdv = request.args.getlist("tipo_pdv") or None
+        if tipos_pdv and tipos_pdv == [""]:
+            tipos_pdv = None
         ts = datetime.now().strftime("%Y%m%d_%H%M")
         fname = f"vectorizacion_completo_{ts}.xlsx"
         ruta = os.path.join(tempfile.gettempdir(), fname)
@@ -278,7 +282,8 @@ def tienda_perfecta_excel():
             producto=producto_filtro,
             ruta_salida=ruta,
             marca=marca or "",
-            grupo=grupo or ""
+            grupo=grupo or "",
+            tipos_pdv=tipos_pdv
         )
         if not os.path.exists(ruta):
             return jsonify({"error": "No se pudo generar el archivo"}), 500

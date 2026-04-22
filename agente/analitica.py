@@ -971,25 +971,37 @@ def sugerido_stock(grupo_farmacia: str | None = None,
 # ══════════════════════════════════════════════════════════════
 
 def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
-                                 marca: str = "", grupo: str = "") -> str:
+                                 marca: str = "", grupo: str = "",
+                                 tipos_pdv: list | None = None) -> str:
     """
-    Genera el Informe de Vectorización semanal COMPLETO.
-    Una pestaña por MARCA con los productos Pareto (80% de venta).
-    Cada fila es un PDV que necesita acción: sin vectorizar, stock=0, stock<=1, stock<=2.
+    Genera el Informe de Vectorización semanal.
+    Una pestaña por MARCA con los productos activos.
 
-    Regla de SUGERIDO (todas las marcas excepto Suerox):
-      - SIN VECTORIZAR → 2 unidades
-      - Stock=0 → 2 unidades
-      - Stock<=1 → 2 unidades
-      - Stock<=2 → 1 unidad
+    tipos_pdv controla qué PDVs se incluyen (lista de strings):
+      - "sin_vectorizar" → PDVs sin presencia histórica (sugerido=2)
+      - "stock_0"        → PDVs con stock=0 (sugerido=2)
+      - "doi_lte20"      → PDVs con DOI ≤20 días (sugerido dinámico para llegar a 30-60 días)
+      - "doi_20_30"      → PDVs con DOI 20-30 días
+      - "doi_30_60"      → PDVs con DOI 30-60 días
+      - "doi_gt60"       → PDVs con DOI >60 días
+    Default (None o vacío): sin_vectorizar + stock_0 + doi_lte20
 
-    Regla de SUGERIDO para SUEROX:
-      Grupo A (Mostrador + Bodegas): SIN VECT→6, Stock=0→6, <=1→5, <=2→4, <=3→3
-      Grupo B (Autoservicio + Pharmacys + Dromayor): SIN VECT→12, Stock=0→12, <=1→11, <=2→10, <=3→9
+    Columnas: GRUPOPDV, CODIGOPDV, POS, IDNEPTUNO, IDDIFARE, PRODUCTO, DOIS, STOCK UNIDADES, SUGERIDO
+
+    Columna DOIS muestra:
+      - "No aplica" para sin vectorizar
+      - 0 para stock=0
+      - días reales de inventario para los demás
     """
+    # Defaults
+    if not tipos_pdv:
+        tipos_pdv = ["sin_vectorizar", "stock_0", "doi_lte20"]
+
     d = cargar_data()
     farm_todo = d["farm_todo"].copy()
     farm_stock = d["farm_stock_ult"].copy()
+    df_todos = d["df_todos"]
+    ultimo_dia = max(d["ultimo_dia_venta"], 1)
 
     # Filtrar por grupo si aplica
     if grupo:
@@ -1018,39 +1030,84 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
                          .reset_index())
     pdv_info_map = {r["POS"]: r for _, r in pdv_info.iterrows()}
 
+    # Preparar datos de venta para cálculo DOI
+    df_farm = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
+    if grupo and not df_farm.empty and "GRUPOPDV" in df_farm.columns:
+        raw_vals_g = _grupo_raw_values([grupo])
+        df_farm = df_farm[df_farm["GRUPOPDV"].isin(raw_vals_g)]
+
+    meses_ord = sorted(df_farm["MES"].dropna().unique()) if not df_farm.empty and "MES" in df_farm.columns else []
+    mes_actual = meses_ord[-1] if meses_ord else None
+    mes_ant = meses_ord[-2] if len(meses_ord) >= 2 else None
+    mes_2ant = meses_ord[-3] if len(meses_ord) >= 3 else None
+
+    stock_val_col = "STOCK_VALORIZADO" if "STOCK_VALORIZADO" in farm_stock.columns else "STOCK"
+
+    def _calcular_doi_pdv(pos, idneptuno, prod_farm, prod_stock_df):
+        """Calcula DOI en días para un PDV+producto específico.
+        Retorna (doi_dias, stock_valorizado, prom_diario_dolar)."""
+        # Stock valorizado del PDV
+        pdv_st = prod_stock_df[prod_stock_df["POS"] == pos]
+        if pdv_st.empty:
+            return 0.0, 0.0, 0.0
+        stock_val = float(pdv_st[stock_val_col].sum())
+        if stock_val <= 0:
+            return 0.0, 0.0, 0.0
+
+        # Venta mensual por mes
+        pdv_venta = prod_farm[prod_farm["POS"] == pos]
+        venta_por_mes = pdv_venta.groupby("MES")["VENTA NETA RECUPERO"].sum() if not pdv_venta.empty else pd.Series(dtype=float)
+
+        v_actual = float(venta_por_mes.get(mes_actual, 0)) if mes_actual else 0
+        v_ant = float(venta_por_mes.get(mes_ant, 0)) if mes_ant else 0
+        v_2ant = float(venta_por_mes.get(mes_2ant, 0)) if mes_2ant else 0
+
+        diarios = []
+        if v_actual > 0 and ultimo_dia > 0:
+            diarios.append(v_actual / ultimo_dia)
+        if v_ant > 0:
+            diarios.append(v_ant / 30)
+        if v_2ant > 0:
+            diarios.append(v_2ant / 30)
+
+        if diarios:
+            prom_diario = sum(diarios) / len(diarios)
+            return stock_val / prom_diario, stock_val, prom_diario
+        return 999.0, stock_val, 0.0  # stock sin venta → DOI infinito
+
+    def _sugerido_doi(doi_actual, stock_unidades, stock_valorizado, prom_diario_dolar):
+        """Calcula unidades sugeridas para llevar el DOI de ≤20 a ~45 días.
+        Usa la relación precio_unit = stock_valorizado / stock_unidades
+        para convertir la rotación en dólares a rotación en unidades."""
+        if stock_unidades <= 0 or stock_valorizado <= 0 or prom_diario_dolar <= 0:
+            return 2  # fallback
+        precio_unit = stock_valorizado / stock_unidades
+        prom_diario_units = prom_diario_dolar / precio_unit
+        target_dias = 45  # punto medio entre 30 y 60
+        unidades_target = max(int(round(prom_diario_units * target_dias)), 2)
+        sugerido = unidades_target - int(stock_unidades)
+        return max(sugerido, 1)
+
     # Clasificar GRUPOPDV para Suerox
     SUEROX_GRUPO_A = {"Cafa Mostrador", "Cafi Mostrador", "Cofa Mostrador",
                       "Bodegas Internas Privadas", "Bodegas Administrativas"}
     SUEROX_GRUPO_B = {"Cafa Autoservicio", "Cafi Autoservicio", "Pharmacys", "Dromayor"}
 
-    def sugerido_normal(stock_status):
-        if stock_status == "SIN VECTORIZAR": return 2
-        if stock_status == 0: return 2
-        if stock_status <= 1: return 2
-        if stock_status <= 2: return 1
-        return 0
-
     def sugerido_suerox_a(stock_status):
         if stock_status == "SIN VECTORIZAR": return 6
         if stock_status == 0: return 6
-        if stock_status <= 1: return 5
-        if stock_status <= 2: return 4
-        if stock_status <= 3: return 3
-        return 0
+        return 2
 
     def sugerido_suerox_b(stock_status):
         if stock_status == "SIN VECTORIZAR": return 12
         if stock_status == 0: return 12
-        if stock_status <= 1: return 11
-        if stock_status <= 2: return 10
-        if stock_status <= 3: return 9
-        return 0
+        return 2
 
     # Agrupar Pareto por marca
-    marcas = {}
+    marcas_dict = {}
     for r in pareto_rows:
         m = r.get("MARCA", "Otros")
-        marcas.setdefault(m, []).append(r)
+        marcas_dict.setdefault(m, []).append(r)
 
     if not ruta_salida:
         import tempfile
@@ -1068,6 +1125,7 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
     data_font = Font(name="Arial", size=9)
     gold_font = Font(name="Arial", size=9, bold=True, color="C9A84C")
     red_font = Font(name="Arial", size=9, bold=True, color="FF0000")
+    blue_font = Font(name="Arial", size=9, bold=True, color="2E75B6")
     border = Border(
         bottom=Side(style="thin", color="D0D0D0")
     )
@@ -1076,12 +1134,19 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
 
     resumen_rows = []
 
-    for marca, prods in marcas.items():
-        sheet_name = marca[:31]  # Excel 31 char limit
+    include_sin_vect = "sin_vectorizar" in tipos_pdv
+    include_stock0 = "stock_0" in tipos_pdv
+    include_doi_lte20 = "doi_lte20" in tipos_pdv
+    include_doi_20_30 = "doi_20_30" in tipos_pdv
+    include_doi_30_60 = "doi_30_60" in tipos_pdv
+    include_doi_gt60 = "doi_gt60" in tipos_pdv
+
+    for marca_name, prods in marcas_dict.items():
+        sheet_name = marca_name[:31]  # Excel 31 char limit
         ws = wb.create_sheet(title=sheet_name)
 
         headers = ["GRUPOPDV", "CODIGOPDV", "POS", "IDNEPTUNO", "IDDIFARE",
-                    "PRODUCTO", "STOCK UNIDADES", "SUGERIDO"]
+                    "PRODUCTO", "DOIS", "STOCK UNIDADES", "SUGERIDO"]
         for c, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=c, value=h)
             cell.font = header_font
@@ -1095,11 +1160,12 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
         for prod_info in prods:
             idneptuno = prod_info.get("IDNEPTUNO", "")
             producto_nombre = prod_info.get("PRODUCTO", "")
-            is_suerox = marca.upper() == "SUEROX"
+            is_suerox = marca_name.upper() == "SUEROX"
 
-            # Buscar PDVs y su stock del último día para este producto
+            # DataFrames de stock y presencia para este producto
             prod_stock_df = farm_stock[farm_stock["IDNEPTUNO"] == idneptuno] if farm_stock is not None and not farm_stock.empty else pd.DataFrame()
             prod_presencia_df = farm_todo[farm_todo["IDNEPTUNO"] == idneptuno] if farm_todo is not None and not farm_todo.empty else pd.DataFrame()
+            prod_farm = df_farm[df_farm["IDNEPTUNO"] == idneptuno] if not df_farm.empty else pd.DataFrame()
 
             pdv_con_presencia = set(prod_presencia_df["POS"].dropna().unique())
             pdv_stock_map = {}
@@ -1109,61 +1175,91 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
                     if pd.notna(pos):
                         pdv_stock_map[pos] = sr.get("STOCK", 0) or 0
 
-            # PDVs sin vectorizar: en universo pero sin ninguna presencia histórica
             pdv_sin_vectorizar = universo_pdv - pdv_con_presencia
 
-            # Construir filas para PDVs que necesitan acción
             filas_producto = []
 
             # 1) Sin vectorizar
-            for pos in sorted(pdv_sin_vectorizar):
-                info = pdv_info_map.get(pos, {})
-                grupo = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
-                if is_suerox:
-                    if grupo in SUEROX_GRUPO_B:
-                        sug = sugerido_suerox_b("SIN VECTORIZAR")
+            if include_sin_vect:
+                for pos in sorted(pdv_sin_vectorizar):
+                    info = pdv_info_map.get(pos, {})
+                    grp = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
+                    if is_suerox:
+                        sug = sugerido_suerox_b("SIN VECTORIZAR") if grp in SUEROX_GRUPO_B else sugerido_suerox_a("SIN VECTORIZAR")
                     else:
-                        sug = sugerido_suerox_a("SIN VECTORIZAR")
-                else:
-                    sug = sugerido_normal("SIN VECTORIZAR")
-                filas_producto.append({
-                    "GRUPOPDV": grupo,
-                    "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
-                    "POS": pos,
-                    "IDNEPTUNO": idneptuno,
-                    "IDDIFARE": prod_info.get("IDDIFARE", ""),
-                    "PRODUCTO": producto_nombre,
-                    "STOCK UNIDADES": "SIN VECTORIZAR",
-                    "SUGERIDO": sug
-                })
-
-            # 2) PDVs con presencia pero stock bajo
-            for pos in sorted(pdv_con_presencia):
-                stock = pdv_stock_map.get(pos)
-                if stock is None:
-                    stock = 0  # no apareció en último día = stock 0
-
-                info = pdv_info_map.get(pos, {})
-                grupo = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
-
-                if is_suerox:
-                    max_threshold = 3
-                    if grupo in SUEROX_GRUPO_B:
-                        sug = sugerido_suerox_b(stock)
-                    else:
-                        sug = sugerido_suerox_a(stock)
-                else:
-                    max_threshold = 2
-                    sug = sugerido_normal(stock)
-
-                if sug > 0:  # Solo incluir si necesita acción
+                        sug = 2
                     filas_producto.append({
-                        "GRUPOPDV": grupo,
+                        "GRUPOPDV": grp,
                         "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
                         "POS": pos,
                         "IDNEPTUNO": idneptuno,
                         "IDDIFARE": prod_info.get("IDDIFARE", ""),
                         "PRODUCTO": producto_nombre,
+                        "DOIS": "No aplica",
+                        "STOCK UNIDADES": "SIN VECTORIZAR",
+                        "SUGERIDO": sug
+                    })
+
+            # 2) PDVs con presencia — clasificar por stock y DOI
+            for pos in sorted(pdv_con_presencia):
+                stock = pdv_stock_map.get(pos)
+                if stock is None:
+                    stock = 0
+
+                info = pdv_info_map.get(pos, {})
+                grp = info.get("GRUPOPDV", "") if isinstance(info, dict) else (info["GRUPOPDV"] if "GRUPOPDV" in info else "")
+
+                if stock == 0:
+                    # Stock = 0
+                    if not include_stock0:
+                        continue
+                    if is_suerox:
+                        sug = sugerido_suerox_b(0) if grp in SUEROX_GRUPO_B else sugerido_suerox_a(0)
+                    else:
+                        sug = 2
+                    filas_producto.append({
+                        "GRUPOPDV": grp,
+                        "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
+                        "POS": pos,
+                        "IDNEPTUNO": idneptuno,
+                        "IDDIFARE": prod_info.get("IDDIFARE", ""),
+                        "PRODUCTO": producto_nombre,
+                        "DOIS": 0,
+                        "STOCK UNIDADES": 0,
+                        "SUGERIDO": sug
+                    })
+                else:
+                    # Tiene stock > 0 → calcular DOI
+                    doi, stock_val, prom_d_dolar = _calcular_doi_pdv(pos, idneptuno, prod_farm, prod_stock_df)
+                    doi_rounded = round(doi, 1)
+
+                    # Clasificar en bucket
+                    if doi <= 20:
+                        if not include_doi_lte20:
+                            continue
+                        # Sugerido dinámico basado en rotación para llegar a 30-60 días
+                        sug = _sugerido_doi(doi, stock, stock_val, prom_d_dolar) if prom_d_dolar > 0 else 2
+                    elif doi <= 30:
+                        if not include_doi_20_30:
+                            continue
+                        sug = 0  # No requiere acción urgente, solo informativo
+                    elif doi <= 60:
+                        if not include_doi_30_60:
+                            continue
+                        sug = 0
+                    else:
+                        if not include_doi_gt60:
+                            continue
+                        sug = 0
+
+                    filas_producto.append({
+                        "GRUPOPDV": grp,
+                        "CODIGOPDV": info.get("CODIGOPDV", "") if isinstance(info, dict) else (info["CODIGOPDV"] if "CODIGOPDV" in info else ""),
+                        "POS": pos,
+                        "IDNEPTUNO": idneptuno,
+                        "IDDIFARE": prod_info.get("IDDIFARE", ""),
+                        "PRODUCTO": producto_nombre,
+                        "DOIS": doi_rounded,
                         "STOCK UNIDADES": stock,
                         "SUGERIDO": sug
                     })
@@ -1178,10 +1274,12 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
                     # Resaltar SIN VECTORIZAR en rojo
                     if h == "STOCK UNIDADES" and fila[h] == "SIN VECTORIZAR":
                         cell.font = red_font
-                    elif h == "SUGERIDO":
+                    elif h == "DOIS" and fila[h] == "No aplica":
+                        cell.font = blue_font
+                    elif h == "SUGERIDO" and fila[h] > 0:
                         cell.font = gold_font
                 row_idx += 1
-                total_sugerido += fila["SUGERIDO"]
+                total_sugerido += fila["SUGERIDO"] if isinstance(fila["SUGERIDO"], (int, float)) else 0
                 total_pdv_accionables += 1
 
         # Ajustar anchos de columna
@@ -1191,19 +1289,20 @@ def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
         ws.column_dimensions["D"].width = 12
         ws.column_dimensions["E"].width = 12
         ws.column_dimensions["F"].width = 35
-        ws.column_dimensions["G"].width = 18
-        ws.column_dimensions["H"].width = 12
+        ws.column_dimensions["G"].width = 10
+        ws.column_dimensions["H"].width = 18
+        ws.column_dimensions["I"].width = 12
 
         resumen_rows.append({
-            "Marca": marca,
-            "Productos Pareto": len(prods),
-            "PDVs accionables": total_pdv_accionables,
+            "Marca": marca_name,
+            "Productos": len(prods),
+            "PDVs en reporte": total_pdv_accionables,
             "Total unidades sugeridas": total_sugerido,
         })
 
     # Hoja Resumen al inicio
     ws_res = wb.create_sheet(title="Resumen", index=0)
-    res_headers = ["Marca", "Productos Pareto", "PDVs accionables", "Total unidades sugeridas"]
+    res_headers = ["Marca", "Productos", "PDVs en reporte", "Total unidades sugeridas"]
     for c, h in enumerate(res_headers, 1):
         cell = ws_res.cell(row=1, column=c, value=h)
         cell.font = header_font
