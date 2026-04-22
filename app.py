@@ -917,28 +917,33 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
   <div class="sidebar-nav">
     <button class="sidebar-item active" data-mod="dashboard" onclick="showModule('dashboard')">
-      <span class="si-icon">📊</span><span class="si-label">Dashboard</span>
+      <span class="si-icon">👤</span><span class="si-label">Mi Cuenta</span>
     </button>
-    <button class="sidebar-item" data-mod="tienda-perfecta" onclick="showModule('tienda-perfecta')">
-      <span class="si-icon">🏪</span><span class="si-label">Tienda Perfecta</span>
-    </button>
-    <button class="sidebar-item" data-mod="visibilidad" onclick="showModule('visibilidad')">
-      <span class="si-icon">👁</span><span class="si-label">Plan Visibilidad</span>
-    </button>
-    <button class="sidebar-item" data-mod="asistente" onclick="showModule('asistente')">
-      <span class="si-icon">🤖</span><span class="si-label">Asistente Gerencial</span>
-    </button>
-    <div class="sidebar-divider"></div>
-    <button class="sidebar-item" data-mod="agenda" onclick="showModule('agenda')">
-      <span class="si-icon">📅</span><span class="si-label">Agenda KAM</span>
+    <button class="sidebar-item" data-mod="bitacora" onclick="showModule('bitacora')">
+      <span class="si-icon">📋</span><span class="si-label">Bitácora de Juntas</span>
     </button>
     <button class="sidebar-item" data-mod="presentaciones" onclick="showModule('presentaciones')">
       <span class="si-icon">📑</span><span class="si-label">Presentaciones</span>
     </button>
-    <button class="sidebar-item" data-mod="onepager" onclick="showModule('onepager')">
-      <span class="si-icon">📋</span><span class="si-label">One-Pager</span>
+    <button class="sidebar-item" data-mod="tienda-perfecta" onclick="showModule('tienda-perfecta')">
+      <span class="si-icon">🏪</span><span class="si-label">Ventas & Surtido</span>
+    </button>
+    <button class="sidebar-item" data-mod="oportunidades" onclick="showModule('oportunidades')">
+      <span class="si-icon">💡</span><span class="si-label">Oportunidades</span>
+    </button>
+    <button class="sidebar-item" data-mod="gates" onclick="showModule('gates')">
+      <span class="si-icon">🚀</span><span class="si-label">Gates · OC → Factura</span>
+    </button>
+    <button class="sidebar-item" data-mod="visibilidad" onclick="showModule('visibilidad')">
+      <span class="si-icon">📈</span><span class="si-label">Performance</span>
+    </button>
+    <button class="sidebar-item" data-mod="configuracion" onclick="showModule('configuracion')">
+      <span class="si-icon">⚙️</span><span class="si-label">Configuración</span>
     </button>
     <div class="sidebar-divider"></div>
+    <button class="sidebar-item" data-mod="asistente" onclick="showModule('asistente')">
+      <span class="si-icon">🤖</span><span class="si-label">Asistente Gerencial</span>
+    </button>
     <button class="sidebar-item" data-mod="campo" onclick="showModule('campo')">
       <span class="si-icon">🏥</span><span class="si-label">Vista Campo</span>
     </button>
@@ -1344,43 +1349,218 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </section>
   </div><!-- /mod-asistente -->
 
-  <!-- ══════ MÓDULO: Agenda KAM (Placeholder) ══════ -->
-  <div id="mod-agenda" class="module">
+  <!-- ══════ MÓDULO: Bitácora de Juntas ══════ -->
+  <div id="mod-bitacora" class="module">
     <section class="card p-6">
-      <div style="text-align:center;padding:60px 20px">
-        <div style="font-size:48px;margin-bottom:16px">📅</div>
-        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Agenda KAM</h2>
-        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Tus reuniones con buyers — con pendientes y preparación AI.</p>
-        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
-          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+      <div class="mb-4" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h2 style="color:var(--white);font-size:20px;font-weight:700">Bitácora de Juntas</h2>
+          <p style="color:var(--muted);font-size:13px">Post-junta log · fácil de llenar con preguntas guiadas · Claude resume después</p>
+        </div>
+        <button style="background:var(--accent);color:var(--navy);padding:10px 20px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer">+ Nueva junta</button>
+      </div>
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Total Juntas</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">8</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Presencial</div><div style="color:var(--accent);font-size:28px;font-weight:700;margin-top:4px">3</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Remote</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">5</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Sentiment Promedio</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">😊 3.6</div></div>
+      </div>
+      <!-- Filtros -->
+      <div style="display:flex;gap:12px;margin-bottom:20px">
+        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Todos los clientes</option><option>Difare</option><option>Favorita</option><option>Rosado</option><option>Tía</option><option>Coral</option><option>Megasantamaria</option><option>Atimasa</option></select>
+        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Cualquier modalidad</option><option>Presencial</option><option>Teams</option><option>Teléfono</option></select>
+      </div>
+      <!-- Listado de juntas -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">18</div><div style="color:var(--muted);font-size:11px">10:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Difare</b><span style="background:var(--accent);color:var(--navy);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">🟠 PRESENCIAL</span><span style="color:var(--muted);font-size:12px">60 min · 4 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Revisión de fill rate Q1. Buyer solicita mejorar tiempos de entrega en costa. Oportunidad de ampliar surtido en categoría derma.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 3 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 2 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😊</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">16</div><div style="color:var(--muted);font-size:11px">14:30</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Favorita</b><span style="background:#0078D4;color:white;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">💻 TEAMS</span><span style="color:var(--muted);font-size:12px">45 min · 2 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Cliente abierto y receptivo. Dos oportunidades concretas: pack exclusivo shampoo + exhibidor Medicasp. Alta probabilidad de cierre.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 2 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 2 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😄</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">15</div><div style="color:var(--muted);font-size:11px">11:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Rosado</b><span style="background:#6B7280;color:white;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">📞 TELÉFONO</span><span style="color:var(--muted);font-size:12px">30 min · 2 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Urgencia alta. Cliente bajo presión de competencia en categoría capilar. Nuestra respuesta a tiempo puede definir share H1 2026.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 1 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 2 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😐</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">12</div><div style="color:var(--muted);font-size:11px">09:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Tía</b><span style="background:var(--accent);color:var(--navy);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">🟠 PRESENCIAL</span><span style="color:var(--muted);font-size:12px">90 min · 4 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Business review trimestral. Revisión de planograma y rotación. Cliente pide exclusividad en 3 SKUs derma para Q2.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 4 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 3 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😊</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">10</div><div style="color:var(--muted);font-size:11px">16:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Coral</b><span style="background:#0078D4;color:white;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">💻 TEAMS</span><span style="color:var(--muted);font-size:12px">30 min · 3 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Follow-up de propuesta enviada. Cliente interesado en ampliar exhibición Cicatricure. Pendiente aprobación de gerencia.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 1 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 1 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😊</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">ABR</div><div style="color:var(--white);font-size:26px;font-weight:700">08</div><div style="color:var(--muted);font-size:11px">10:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Megasantamaria</b><span style="background:var(--accent);color:var(--navy);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">🟠 PRESENCIAL</span><span style="color:var(--muted);font-size:12px">60 min · 3 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Negociación de espacio adicional en góndola. Cliente quiere datos de sell-out para justificar ante su dirección. Enviamos reporte.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 2 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 2 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😄</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">MAR</div><div style="color:var(--white);font-size:26px;font-weight:700">28</div><div style="color:var(--muted);font-size:11px">15:00</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Atimasa</b><span style="background:#0078D4;color:white;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">💻 TEAMS</span><span style="color:var(--muted);font-size:12px">45 min · 2 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Primera reunión formal. Presentación de portafolio completo. Cliente muestra interés en Medicasp y Suerox. Pide propuesta para mayo.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 2 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 3 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😊</div>
+        </div>
+        <div class="card" style="padding:16px;display:flex;align-items:flex-start;gap:16px">
+          <div style="text-align:center;min-width:50px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase">MAR</div><div style="color:var(--white);font-size:26px;font-weight:700">20</div><div style="color:var(--muted);font-size:11px">11:30</div></div>
+          <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><b style="color:var(--white);font-size:15px">Difare</b><span style="background:#0078D4;color:white;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">💻 TEAMS</span><span style="color:var(--muted);font-size:12px">45 min · 3 asistentes</span></div><p style="color:var(--muted);font-size:13px;margin:4px 0">Seguimiento de acuerdos de junta anterior. Fill rate mejoró 4 pts. Buyer confirma ampliación de listado en Cruz Azul para mayo.</p><div style="display:flex;gap:12px;margin-top:6px"><span style="color:var(--accent);font-size:12px">🟢 2 acuerdos</span><span style="color:var(--muted);font-size:12px">→ 1 next steps</span><span style="color:var(--muted);font-size:12px">KAM: Francisco Avila</span></div></div>
+          <div style="font-size:28px">😄</div>
         </div>
       </div>
     </section>
   </div>
 
-  <!-- ══════ MÓDULO: Presentaciones (Placeholder) ══════ -->
+  <!-- ══════ MÓDULO: Presentaciones ══════ -->
   <div id="mod-presentaciones" class="module">
     <section class="card p-6">
-      <div style="text-align:center;padding:60px 20px">
-        <div style="font-size:48px;margin-bottom:16px">📑</div>
-        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Presentaciones</h2>
-        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Genera decks automáticos con data actualizada para tus reuniones con clientes.</p>
-        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
-          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+      <div class="mb-4" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h2 style="color:var(--white);font-size:20px;font-weight:700">Presentaciones</h2>
+          <p style="color:var(--muted);font-size:13px">Armador con templates · auto-pull de datos · arrastre oportunidades de facturación</p>
+        </div>
+        <button style="background:var(--accent);color:var(--navy);padding:10px 20px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer">+ Nueva presentación</button>
+      </div>
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Total</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">5</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Borradores</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">2</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">En Revisión</div><div style="color:var(--accent);font-size:28px;font-weight:700;margin-top:4px">1</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Presentadas</div><div style="color:var(--accent);font-size:28px;font-weight:700;margin-top:4px">2</div></div>
+      </div>
+      <!-- Templates rápidos -->
+      <h3 style="color:var(--white);font-size:15px;font-weight:600;margin-bottom:12px">Templates rápidos</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:28px">
+        <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border);transition:border .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'"><b style="color:var(--white);font-size:13px">Revisión Mensual de Performance</b><p style="color:var(--muted);font-size:11px;margin:4px 0">Business review mensual con cliente · qué pasó el último mes · dónde estamos vs...</p><span style="color:var(--accent);font-size:11px;font-weight:600">10 slides</span></div>
+        <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border);transition:border .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'"><b style="color:var(--white);font-size:13px">Propuesta de Campaña/Promoción</b><p style="color:var(--muted);font-size:11px;margin:4px 0">Pitch de mecánica promocional específica para temporadas clave...</p><span style="color:var(--accent);font-size:11px;font-weight:600">8 slides</span></div>
+        <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border);transition:border .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'"><b style="color:var(--white);font-size:13px">Negociación de Fondos Comerciales</b><p style="color:var(--muted);font-size:11px;margin:4px 0">Discusión anual o semestral de trade spend · ROI de lo invertido · propuesta futura</p><span style="color:var(--accent);font-size:11px;font-weight:600">6 slides</span></div>
+        <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border);transition:border .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'"><b style="color:var(--white);font-size:13px">Business Review Trimestral</b><p style="color:var(--muted);font-size:11px;margin:4px 0">QBR formal con dirección de cliente · visión 360 · planes siguiente Q</p><span style="color:var(--accent);font-size:11px;font-weight:600">8 slides</span></div>
+        <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border);transition:border .2s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'"><b style="color:var(--white);font-size:13px">Desde cero (libre)</b><p style="color:var(--muted);font-size:11px;margin:4px 0">Partir de slide en blanco · control total</p><span style="color:var(--gold);font-size:11px;font-weight:600">1 slides</span></div>
+      </div>
+      <!-- Historial -->
+      <h3 style="color:var(--white);font-size:15px;font-weight:600;margin-bottom:12px">Historial</h3>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
+          <div style="width:36px;height:36px;background:rgba(46,117,182,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">📄</div>
+          <div style="flex:1"><b style="color:var(--white);font-size:14px">Propuesta Medicasp · Difare Q2</b><p style="color:var(--muted);font-size:12px">Difare · Francisco Avila · 8 slides · <span style="color:var(--gold)">1 oportunidades</span></p></div>
+          <div><span style="background:rgba(46,117,182,0.2);color:#7a8fbb;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">BORRADOR</span><div style="color:var(--muted);font-size:11px;text-align:right;margin-top:2px">2026-04-20</div></div>
+        </div>
+        <div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
+          <div style="width:36px;height:36px;background:rgba(46,117,182,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">📄</div>
+          <div style="flex:1"><b style="color:var(--white);font-size:14px">Ampliación Surtido Derma · Tía 120 tiendas</b><p style="color:var(--muted);font-size:12px">Tía · Francisco Avila · 12 slides · <span style="color:var(--gold)">2 oportunidades</span></p></div>
+          <div><span style="background:rgba(201,168,76,0.15);color:var(--gold);padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">EN REVISIÓN</span><div style="color:var(--muted);font-size:11px;text-align:right;margin-top:2px">2026-04-18</div></div>
+        </div>
+        <div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
+          <div style="width:36px;height:36px;background:rgba(46,117,182,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">📄</div>
+          <div style="flex:1"><b style="color:var(--white);font-size:14px">QBR Q1 2026 + Pipeline Q2</b><p style="color:var(--muted);font-size:12px">Favorita · Francisco Avila · 14 slides · <span style="color:var(--gold)">3 oportunidades</span></p></div>
+          <div><span style="background:rgba(0,200,150,0.15);color:#00c896;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">PRESENTADA</span><div style="color:var(--muted);font-size:11px;text-align:right;margin-top:2px">2026-04-15</div></div>
+        </div>
+        <div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
+          <div style="width:36px;height:36px;background:rgba(46,117,182,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">📄</div>
+          <div style="flex:1"><b style="color:var(--white);font-size:14px">Campaña Día de la Madre · Coral</b><p style="color:var(--muted);font-size:12px">Coral · Francisco Avila · 6 slides · <span style="color:var(--gold)">1 oportunidades</span></p></div>
+          <div><span style="background:rgba(46,117,182,0.2);color:#7a8fbb;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">BORRADOR</span><div style="color:var(--muted);font-size:11px;text-align:right;margin-top:2px">2026-04-12</div></div>
+        </div>
+        <div class="card" style="padding:14px;display:flex;align-items:center;gap:14px">
+          <div style="width:36px;height:36px;background:rgba(46,117,182,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">📄</div>
+          <div style="flex:1"><b style="color:var(--white);font-size:14px">Revisión Mensual Marzo · Megasantamaria</b><p style="color:var(--muted);font-size:12px">Megasantamaria · Francisco Avila · 10 slides · <span style="color:var(--gold)">2 oportunidades</span></p></div>
+          <div><span style="background:rgba(0,200,150,0.15);color:#00c896;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600">PRESENTADA</span><div style="color:var(--muted);font-size:11px;text-align:right;margin-top:2px">2026-04-05</div></div>
         </div>
       </div>
     </section>
   </div>
 
-  <!-- ══════ MÓDULO: One-Pager (Placeholder) ══════ -->
-  <div id="mod-onepager" class="module">
+  <!-- ══════ MÓDULO: Oportunidades de Facturación ══════ -->
+  <div id="mod-oportunidades" class="module">
+    <section class="card p-6">
+      <div class="mb-4" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h2 style="color:var(--white);font-size:20px;font-weight:700">Oportunidades de Facturación</h2>
+          <p style="color:var(--muted);font-size:13px">Claude escanea sell-out, inventarios, competencia y bitácoras 24/7 · tú decides qué convertir en factura</p>
+        </div>
+        <div style="color:var(--accent);font-size:13px;font-weight:600;text-align:right">ÚLTIMA REVISIÓN<br><span style="color:var(--gold)">hace 5 min</span></div>
+      </div>
+      <!-- Botones -->
+      <div style="display:flex;gap:12px;margin-bottom:20px">
+        <button style="flex:1;background:var(--accent);color:var(--navy);padding:12px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer">📊 Reposición · hoja Excel editable</button>
+        <button style="flex:1;background:transparent;color:var(--gold);padding:12px;border-radius:10px;border:1px solid rgba(201,168,76,0.3);font-size:14px;font-weight:600;cursor:pointer">💡 Estratégicas · detectadas por Claude</button>
+      </div>
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">SKUs Listados</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">24</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">🚨 Déficit Crítico</div><div style="color:#f87171;font-size:28px;font-weight:700;margin-top:4px">3</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">⚠️ Déficit Moderado</div><div style="color:var(--accent);font-size:28px;font-weight:700;margin-top:4px">14</div></div>
+        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Oportunidad $ Total</div><div style="color:var(--gold);font-size:28px;font-weight:700;margin-top:4px">$8.7M</div></div>
+      </div>
+      <!-- Filtros -->
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Todos los clientes</option><option>Difare</option><option>Favorita</option><option>Rosado</option><option>Tía</option><option>Coral</option><option>Megasantamaria</option><option>Atimasa</option></select>
+        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Todas las marcas</option><option>Cicatricure</option><option>Medicasp</option><option>Suerox</option><option>Tío Nacho</option></select>
+        <div style="display:flex;gap:4px;margin-left:8px">
+          <button style="background:var(--accent);color:var(--navy);padding:6px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer">Con déficit</button>
+          <button style="background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;border:1px solid var(--border);font-size:12px;cursor:pointer">🚨 Crítico</button>
+          <button style="background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;border:1px solid var(--border);font-size:12px;cursor:pointer">Todos</button>
+        </div>
+      </div>
+      <!-- Tabla -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">Cliente</th>
+            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">Marca</th>
+            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">SKU</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Tiene</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">En Tránsito</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Debería</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Gap</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">$ Unit</th>
+            <th style="padding:10px 8px;text-align:center;color:var(--muted);font-size:11px;text-transform:uppercase">Proponer OC (U)</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Valor $</th>
+            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Cobertura</th>
+          </tr></thead>
+          <tbody>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Difare</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-GLD-50<br><span style="color:var(--muted);font-size:11px">Cicatricure Gold Lift 50ml</span></td><td style="text-align:right;color:var(--white)">2,840</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">9,200</td><td style="text-align:right;color:#f87171;font-weight:700">-6,360</td><td style="text-align:right;color:var(--white)">$412</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">6360</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$2.6M</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Favorita</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">MEDICASP</span></td><td style="color:var(--white)">MED-SH-200<br><span style="color:var(--muted);font-size:11px">Medicasp Shampoo 200ml</span></td><td style="text-align:right;color:var(--white)">1,520</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">4,800</td><td style="text-align:right;color:#f87171;font-weight:700">-3,280</td><td style="text-align:right;color:var(--white)">$185</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">3280</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$607K</td><td style="text-align:right;color:var(--muted)">10d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Tía</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">TÍO NACHO</span></td><td style="color:var(--white)">TN-415-ANT<br><span style="color:var(--muted);font-size:11px">Tío Nacho Anti-caída 415ml</span></td><td style="text-align:right;color:var(--white)">4,100</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">10,500</td><td style="text-align:right;color:#f87171;font-weight:700">-6,400</td><td style="text-align:right;color:var(--white)">$118</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">6400</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$755K</td><td style="text-align:right;color:var(--muted)">12d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Rosado</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-GEL-60<br><span style="color:var(--muted);font-size:11px">Cicatricure Gel Pro 60ml</span></td><td style="text-align:right;color:var(--white)">980</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">3,400</td><td style="text-align:right;color:#f87171;font-weight:700">-2,420</td><td style="text-align:right;color:var(--white)">$189</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">2420</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$457K</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Coral</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">SUEROX</span></td><td style="color:var(--white)">SUE-600-NJ<br><span style="color:var(--muted);font-size:11px">Suerox Naranja 600ml</span></td><td style="text-align:right;color:var(--white)">6,200</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">12,000</td><td style="text-align:right;color:#f87171;font-weight:700">-5,800</td><td style="text-align:right;color:var(--white)">$78</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">5800</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$452K</td><td style="text-align:right;color:var(--muted)">15d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Megasantamaria</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">TÍO NACHO</span></td><td style="color:var(--white)">TN-415-BRI<br><span style="color:var(--muted);font-size:11px">Tío Nacho Brillo 415ml</span></td><td style="text-align:right;color:var(--white)">3,150</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">8,900</td><td style="text-align:right;color:#f87171;font-weight:700">-5,750</td><td style="text-align:right;color:var(--white)">$118</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">5750</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$679K</td><td style="text-align:right;color:var(--muted)">11d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Atimasa</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-CIC-30<br><span style="color:var(--muted);font-size:11px">Cicatricure Crema 30g</span></td><td style="text-align:right;color:var(--white)">1,200</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">4,100</td><td style="text-align:right;color:#f87171;font-weight:700">-2,900</td><td style="text-align:right;color:var(--white)">$295</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">2900</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$856K</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
+            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Difare</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">MEDICASP</span></td><td style="color:var(--white)">MED-SH-130<br><span style="color:var(--muted);font-size:11px">Medicasp Shampoo 130ml</span></td><td style="text-align:right;color:var(--white)">2,400</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">5,600</td><td style="text-align:right;color:#f87171;font-weight:700">-3,200</td><td style="text-align:right;color:var(--white)">$145</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">3200</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$464K</td><td style="text-align:right;color:var(--muted)">13d</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════ MÓDULO: Gates OC → Factura (Placeholder) ══════ -->
+  <div id="mod-gates" class="module">
     <section class="card p-6">
       <div style="text-align:center;padding:60px 20px">
-        <div style="font-size:48px;margin-bottom:16px">📋</div>
-        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">One-Pager</h2>
-        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Resumen ejecutivo para la reunión con el buyer — KPIs, alertas y recomendaciones AI.</p>
+        <div style="font-size:48px;margin-bottom:16px">🚀</div>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Gates · OC → Factura</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Seguimiento del pipeline de órdenes de compra hasta facturación — visibilidad completa del funnel comercial.</p>
         <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
-          <span style="color:var(--gold);font-size:13px;font-weight:600">Próximamente</span>
+          <span style="color:var(--gold);font-size:13px;font-weight:600">En Desarrollo</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════ MÓDULO: Configuración (Placeholder) ══════ -->
+  <div id="mod-configuracion" class="module">
+    <section class="card p-6">
+      <div style="text-align:center;padding:60px 20px">
+        <div style="font-size:48px;margin-bottom:16px">⚙️</div>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Configuración</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Ajustes de cuenta, notificaciones, integraciones y preferencias del agente.</p>
+        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
+          <span style="color:var(--gold);font-size:13px;font-weight:600">En Desarrollo</span>
         </div>
       </div>
     </section>
