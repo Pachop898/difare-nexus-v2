@@ -1027,7 +1027,7 @@ def sugerido_stock(grupo_farmacia: str | None = None,
 # 6) Export Excel de vectorización (pregunta KAM #6)
 # ══════════════════════════════════════════════════════════════
 
-def exportar_vectorizacion_excel(producto: str = "", ruta_salida: str = "",
+def exportar_vectorizacion_excel(producto: str | list = "", ruta_salida: str = "",
                                  marca: str = "", grupo: str = "",
                                  tipos_pdv: list | None = None) -> str:
     """

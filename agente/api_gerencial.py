@@ -269,8 +269,8 @@ def tienda_perfecta_excel():
         from datetime import datetime
         marca, canal, grupos, productos = _parse_filtros()
         grupo = grupos[0] if grupos else None
-        # productos puede ser lista o vacío
-        producto_filtro = productos[0] if productos and len(productos) == 1 else ""
+        # productos: pasar lista completa al Excel (soporta multi-select)
+        producto_filtro = productos if productos else ""
         # tipos_pdv: filtro de qué PDVs incluir en el Excel
         tipos_pdv = request.args.getlist("tipo_pdv") or None
         if tipos_pdv and tipos_pdv == [""]:
