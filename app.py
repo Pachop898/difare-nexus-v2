@@ -1642,7 +1642,7 @@ function logout(){
   window.location.href="/";
 }
 
-async function api(path, timeoutMs=45000){
+async function api(path, timeoutMs=90000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
