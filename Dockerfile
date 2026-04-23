@@ -26,7 +26,5 @@ CMD gunicorn app:app \
     --workers 1 \
     --threads 4 \
     --timeout 180 \
-    --max-requests 500 \
-    --max-requests-jitter 50 \
     --access-logfile - \
     --error-logfile -

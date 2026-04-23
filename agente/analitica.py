@@ -106,7 +106,7 @@ print(f"[analitica] EXCELS_DIR = {EXCELS_DIR} (existe={os.path.isdir(EXCELS_DIR)
 
 _cache = {}
 _cache_ts = 0  # timestamp de última carga
-_CACHE_TTL = 3600  # 1 hora — se recarga automáticamente tras este tiempo
+_CACHE_TTL = 43200  # 12 horas — los Excel no cambian durante el día
 import time as _time
 
 def _carpeta():

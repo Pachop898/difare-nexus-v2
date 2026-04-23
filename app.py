@@ -252,8 +252,15 @@ def branding_file(filename):
 
 @app.route("/health", methods=["GET"])
 def health():
-    # Liviano: sólo confirma que el worker responde. No toca la BD para no
-    # reventar el healthcheck durante el cold start de Railway.
+    # Mantener datos calientes: si el caché de pandas expiró, recargarlo
+    # en background para que el próximo request del usuario sea rápido.
+    try:
+        from agente import analitica
+        if hasattr(analitica, '_cache') and not analitica._cache:
+            import threading
+            threading.Thread(target=analitica.cargar_data, daemon=True).start()
+    except Exception:
+        pass
     return jsonify({"status": "ok"}), 200
 
 @app.route("/health/db", methods=["GET"])
@@ -2320,24 +2327,28 @@ async function _cargarDashboard(intento){
   await waitForReady();
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
-  if(sub)sub.textContent="Cargando dashboard...";
+  if(sub)sub.textContent="Cargando dashboard…";
   const safetyTimer=setTimeout(()=>{
     if(overlay && overlay.style.display!=='none'){
       overlay.style.display="none";
       console.warn("Overlay removido por timeout de seguridad");
     }
-  },35000);
+  },120000);
   let ok=await _cargarDashboard(1);
   if(!ok){
-    if(sub)sub.textContent="Reintentando...";
-    await new Promise(r=>setTimeout(r,3000));
+    if(sub)sub.textContent="El servidor está preparando los datos… reintentando (2/4)";
+    await new Promise(r=>setTimeout(r,5000));
     ok=await _cargarDashboard(2);
   }
   if(!ok){
-    // Tercer intento después de 5s más
-    if(sub)sub.textContent="Último intento...";
-    await new Promise(r=>setTimeout(r,5000));
+    if(sub)sub.textContent="Cargando datos desde Excel… reintentando (3/4)";
+    await new Promise(r=>setTimeout(r,8000));
     ok=await _cargarDashboard(3);
+  }
+  if(!ok){
+    if(sub)sub.textContent="Último intento… (4/4)";
+    await new Promise(r=>setTimeout(r,10000));
+    ok=await _cargarDashboard(4);
   }
   if(!ok && sub) sub.textContent="Error al cargar. Recarga la página.";
   {
