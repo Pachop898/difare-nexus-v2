@@ -939,9 +939,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <button class="sidebar-item" data-mod="oportunidades" onclick="showModule('oportunidades')">
       <span class="si-icon">💡</span><span class="si-label">Oportunidades</span>
     </button>
-    <button class="sidebar-item" data-mod="gates" onclick="showModule('gates')">
-      <span class="si-icon">🚀</span><span class="si-label">Gates · OC → Factura</span>
-    </button>
     <button class="sidebar-item" data-mod="visibilidad" onclick="showModule('visibilidad')">
       <span class="si-icon">📈</span><span class="si-label">Performance</span>
     </button>
@@ -1550,20 +1547,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Difare</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">MEDICASP</span></td><td style="color:var(--white)">MED-SH-130<br><span style="color:var(--muted);font-size:11px">Medicasp Shampoo 130ml</span></td><td style="text-align:right;color:var(--white)">2,400</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">5,600</td><td style="text-align:right;color:#f87171;font-weight:700">-3,200</td><td style="text-align:right;color:var(--white)">$145</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">3200</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$464K</td><td style="text-align:right;color:var(--muted)">13d</td></tr>
           </tbody>
         </table>
-      </div>
-    </section>
-  </div>
-
-  <!-- ══════ MÓDULO: Gates OC → Factura (Placeholder) ══════ -->
-  <div id="mod-gates" class="module">
-    <section class="card p-6">
-      <div style="text-align:center;padding:60px 20px">
-        <div style="font-size:48px;margin-bottom:16px">🚀</div>
-        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;margin-bottom:8px">Gates · OC → Factura</h2>
-        <p style="color:var(--muted);font-size:14px;max-width:400px;margin:0 auto">Seguimiento del pipeline de órdenes de compra hasta facturación — visibilidad completa del funnel comercial.</p>
-        <div style="margin-top:24px;padding:12px 24px;background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.2);border-radius:10px;display:inline-block">
-          <span style="color:var(--gold);font-size:13px;font-weight:600">En Desarrollo</span>
-        </div>
       </div>
     </section>
   </div>
