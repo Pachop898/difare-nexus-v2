@@ -2647,16 +2647,26 @@ try:
         except Exception as e:
             print(f"[v2] Visibilidad falló: {e}")
 
-        # PASO 3: Regenerar SQLite si es necesario (en último lugar, no urgente)
-        try:
-            if _excels_mas_nuevos_que_db():
-                print("[v2] Regenerando data.db en background…")
-                _regenerar_data_db()
-                print("[v2] ✅ data.db regenerado")
-            else:
-                print("[v2] data.db al día, no regenerar")
-        except Exception as e:
-            print(f"[v2] Regenerar data.db falló: {e}")
+        # PASO 3: Regenerar SQLite si es necesario
+        # Deshabilitado por defecto en Railway: el ETL re-lee los Excel con
+        # openpyxl mientras pandas sigue en memoria → pico de RAM y OOM.
+        # El dashboard gerencial (módulos actuales) usa pandas directamente,
+        # no data.db. Los endpoints legacy que sí la usan pueden quedar
+        # servidos con datos un poco desactualizados; se regenera manualmente
+        # corriendo `python actualizar_data.py` local y se commitea si se
+        # desea, o se activa seteando la env var REGENERAR_DB_AUTO=1.
+        if os.environ.get("REGENERAR_DB_AUTO") == "1":
+            try:
+                if _excels_mas_nuevos_que_db():
+                    print("[v2] Regenerando data.db en background…")
+                    _regenerar_data_db()
+                    print("[v2] ✅ data.db regenerado")
+                else:
+                    print("[v2] data.db al día, no regenerar")
+            except Exception as e:
+                print(f"[v2] Regenerar data.db falló: {e}")
+        else:
+            print("[v2] Auto-regen de data.db deshabilitado (REGENERAR_DB_AUTO!=1)")
     threading.Thread(target=_prewarm, daemon=True).start()
 except Exception as e:
     _data_ready = True  # sin blueprint, no hay pre-warm que esperar

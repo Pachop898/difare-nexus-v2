@@ -12,7 +12,8 @@ env/
 .env
 *.env.local
 
-# Base de datos local (no versionar — muy grande, cambia cada run)
+# Base de datos local — NO versionar (muy grande, se regenera manualmente).
+# Para re-habilitar el ETL auto en Railway, setea REGENERAR_DB_AUTO=1.
 api/data.db
 *.db
 *.sqlite
