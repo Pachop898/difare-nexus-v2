@@ -338,7 +338,8 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             "UNIVERSO_PDV": universo_pdv,
             "PDV_PRESENCIA": presencia,
             "PDV_VENTA_ULT_MES": pdv_venta_ult_mes,
-            "MES_ULT_COMPLETO": int(mes_ult_completo) if mes_ult_completo is not None else None,
+            # MES viene como string "YYYY-MM" (p.ej. "2026-03"), no entero
+            "MES_ULT_COMPLETO": str(mes_ult_completo) if mes_ult_completo is not None else None,
             "STOCK_0": stock_eq0,
             "STOCK_1": stock_leq1,
             "STOCK_2": stock_leq2,
