@@ -261,12 +261,28 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
 
     # ── PDVs con venta en el último mes completo — por producto ──
     # Se usa para el %Pon (ponderada) = PDV con venta último mes / PDV presencia
+    # IMPORTANTE: df_farm_todos también contiene datos del SAP semanal, que
+    # aporta datos parciales del mes en curso (p.ej. al 19 de abril). Si
+    # usamos directamente el mes máximo en meses_ord, tomamos ese mes parcial
+    # y los conteos quedan artificialmente bajos. Detectamos la parcialidad
+    # comparando el conteo de filas del último mes contra el penúltimo: si
+    # el último tiene menos de 50%, lo consideramos parcial y usamos el
+    # penúltimo como "último mes completo".
     mes_ult_completo = None
     venta_ult_mes_por_prod = {}
     if "MES" in df_farm_todos.columns and "POS" in df_farm_todos.columns:
         meses_ord = sorted(df_farm_todos["MES"].dropna().unique())
         if meses_ord:
-            mes_ult_completo = meses_ord[-1]
+            if len(meses_ord) >= 2:
+                rows_last = int((df_farm_todos["MES"] == meses_ord[-1]).sum())
+                rows_prev = int((df_farm_todos["MES"] == meses_ord[-2]).sum())
+                if rows_prev > 0 and rows_last < rows_prev * 0.5:
+                    mes_ult_completo = meses_ord[-2]
+                else:
+                    mes_ult_completo = meses_ord[-1]
+            else:
+                mes_ult_completo = meses_ord[-1]
+
             df_ult_mes = df_farm_todos[
                 (df_farm_todos["MES"] == mes_ult_completo)
                 & (df_farm_todos["VENTA NETA RECUPERO"] > 0)

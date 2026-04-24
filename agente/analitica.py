@@ -250,9 +250,20 @@ def _grupo_raw_values(display_names: list[str]) -> list[str]:
 # ══════════════════════════════════════════════════════════════
 
 def _aplicar_filtros_df(df, marca=None, canal=None, grupos=None, productos=None):
-    """Aplica filtros comunes a un DataFrame de ventas."""
+    """Aplica filtros comunes a un DataFrame de ventas.
+
+    `marca` puede ser:
+      - None → sin filtro
+      - str  → match por substring case-insensitive (compatibilidad legacy)
+      - list → match exacto contra cualquiera de los nombres
+    """
     if marca:
-        df = df[df["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+        if isinstance(marca, (list, tuple, set)):
+            marcas_set = set(str(m).strip() for m in marca if m)
+            if marcas_set:
+                df = df[df["MARCA"].astype(str).isin(marcas_set)]
+        else:
+            df = df[df["MARCA"].astype(str).str.contains(str(marca), case=False, na=False)]
     if canal:
         df = df[df["UNIDAD"] == canal]
     if grupos and "GRUPOPDV" in df.columns:
@@ -292,8 +303,11 @@ def kpis_dashboard(marca: str | None = None, canal: str | None = None,
     }
 
 
-def filtros_disponibles(marca: str | None = None) -> dict:
-    """Retorna las opciones de filtros disponibles: marcas, grupos, productos (cascadeados por marca)."""
+def filtros_disponibles(marca=None) -> dict:
+    """Retorna las opciones de filtros disponibles: marcas, grupos, productos (cascadeados por marca).
+
+    `marca` acepta None, str (substring match, legacy) o list (match exacto multi).
+    """
     d = cargar_data()
     df = d["df_todos"]
     farm_todo = d.get("farm_todo")
@@ -314,10 +328,15 @@ def filtros_disponibles(marca: str | None = None) -> dict:
             raw_grupos = farm_todo["GRUPOPDV"].dropna().unique().tolist()
             grupos = sorted(set(_grupo_display(g) for g in raw_grupos))
 
-    # Productos — cascadeados por marca si se pasa
+    # Productos — cascadeados por marca(s) si se pasa
     df_prod = df
     if marca:
-        df_prod = df_prod[df_prod["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+        if isinstance(marca, (list, tuple, set)):
+            marcas_set = set(str(m).strip() for m in marca if m)
+            if marcas_set:
+                df_prod = df_prod[df_prod["MARCA"].astype(str).isin(marcas_set)]
+        else:
+            df_prod = df_prod[df_prod["MARCA"].astype(str).str.contains(str(marca), case=False, na=False)]
     productos = sorted(df_prod["PRODUCTO"].dropna().unique().tolist()) if "PRODUCTO" in df_prod.columns else []
 
     # Mapeo marca → productos para filtrado dinámico en frontend
@@ -980,17 +999,21 @@ def oportunidad_vectorizacion(producto=None,
 
         rows = [dict(r) for r in _cache_pareto]  # deep copy
 
-    # Filtros de texto: marca y/o producto
+    # Filtros de texto: marca y/o producto (ambos aceptan string o lista)
     if marca:
-        m = marca.lower()
-        rows = [r for r in rows if m in str(r.get("MARCA", "")).lower()]
-    # Filtro de producto: puede ser string o lista de strings
+        if isinstance(marca, (list, tuple, set)):
+            marca_set = set(str(m).strip().lower() for m in marca if m)
+            if marca_set:
+                rows = [r for r in rows if str(r.get("MARCA", "")).strip().lower() in marca_set]
+        else:
+            m = str(marca).lower()
+            rows = [r for r in rows if m in str(r.get("MARCA", "")).lower()]
     if producto:
-        if isinstance(producto, list):
-            prod_set = set(p.lower() for p in producto)
+        if isinstance(producto, (list, tuple, set)):
+            prod_set = set(str(p).lower() for p in producto if p)
             rows = [r for r in rows if str(r.get("PRODUCTO", "")).lower() in prod_set]
         else:
-            p = producto.lower()
+            p = str(producto).lower()
             rows = [r for r in rows if p in str(r.get("PRODUCTO", "")).lower()]
 
     if top_n > 0:

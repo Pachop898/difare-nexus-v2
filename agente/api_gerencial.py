@@ -86,8 +86,16 @@ def _autorizar(roles_permitidos=("admin", "gerencial")):
 # ══════════════════════════════════════════════════════════════
 
 def _parse_filtros():
-    """Extrae filtros comunes de los query params."""
-    marca = request.args.get("marca", "").strip() or None
+    """Extrae filtros comunes de los query params.
+
+    marca: puede venir como varios valores repetidos (?marca=A&marca=B).
+    Devolvemos siempre una lista (o None si no hay selección). Las funciones
+    downstream en analitica.py aceptan tanto string como lista.
+    """
+    marcas = request.args.getlist("marca") or []
+    # Limpiar vacíos y dedupear preservando orden
+    marcas = [m.strip() for m in marcas if m and m.strip()]
+    marca = marcas if marcas else None
     canal = request.args.get("canal", "").strip() or None
     grupos = request.args.getlist("grupo") or None
     productos = request.args.getlist("producto") or None
@@ -128,7 +136,9 @@ def filtros():
     auth, err = _autorizar()
     if err: return err
     try:
-        marca = request.args.get("marca", "").strip() or None
+        # Acepta tanto ?marca=A como ?marca=A&marca=B (multi-select)
+        marcas_list = [m.strip() for m in request.args.getlist("marca") if m and m.strip()]
+        marca = marcas_list if marcas_list else None
         return jsonify(analitica.filtros_disponibles(marca=marca)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

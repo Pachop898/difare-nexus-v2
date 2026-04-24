@@ -1031,10 +1031,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="flex flex-wrap items-center gap-3">
       <span class="text-xs font-semibold" style="color:var(--gold);text-transform:uppercase;letter-spacing:0.05em">Filtros</span>
 
-      <!-- Marca (single select) -->
-      <select id="filtro-marca" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
-        <option value="">Todas las marcas</option>
-      </select>
+      <!-- Marca (multi-select checkboxes) -->
+      <div class="ms-wrap" id="ms-marca-wrap">
+        <button type="button" class="ms-btn" id="ms-marca-btn" onclick="toggleMS('marca')">
+          <span id="ms-marca-label">Todas las marcas</span><span class="ms-arrow">▼</span>
+        </button>
+        <div class="ms-drop" id="ms-marca-drop"></div>
+      </div>
 
       <!-- Canal (single select: Farmacias / Distribución) -->
       <select id="filtro-canal" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
@@ -1219,6 +1222,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">PDV</th>
               <th class="text-center px-2 py-2">Presencia</th>
               <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2" title="PDVs con venta > 0 unidades en el último mes completo">#PDV<br>con Venta</th>
               <th class="text-center px-2 py-2" title="PDVs con venta en el último mes completo / PDVs con presencia">%Pon</th>
               <th class="text-center px-2 py-2" style="color:#ef4444">#PDV<br>Stock=0</th>
               <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV<br>Stock≤2</th>
@@ -1228,7 +1232,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2" style="color:#8b5cf6">DOI<br>&gt;60</th>
             </tr>
           </thead>
-          <tbody id="tp-body"><tr><td colspan="15" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+          <tbody id="tp-body"><tr><td colspan="16" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -1724,7 +1728,7 @@ async function waitForReady(maxWait=240){
 }
 
 // ── Filtro global (marca, canal, grupo multi, producto multi) ──
-let _filtroMarca="";
+let _filtroMarcas=[];    // array de strings (multi-select)
 let _filtroCanal="";
 let _filtroGrupos=[];   // array de strings
 let _filtroProductos=[]; // array de strings
@@ -1929,14 +1933,11 @@ async function cargarFiltros(){
     const d=await api("/api/filtros");if(!d)return;
     // Poblar filtros de TP también (en try separado para no bloquear dashboard)
     try{ cargarFiltrosTP(d); }catch(e2){console.warn("filtrosTP:",e2);}
-    // Marca (single select)
-    const selMarca=document.getElementById("filtro-marca");
-    if(selMarca.options.length<=1){
-      (d.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selMarca.appendChild(o);});
-    }
-    selMarca.addEventListener("change",async()=>{
-      _filtroMarca=selMarca.value;
-      // Cascading: reload productos filtered by marca
+    // Marca (multi-select checkboxes, cascadea productos)
+    _poblarMS("ms-marca-drop",d.marcas||[],"ms-marca-label","Todas las marcas",async()=>{
+      _filtroMarcas=_getChecked("ms-marca-drop");
+      _updateMSLabel("ms-marca-drop","ms-marca-label","Todas las marcas");
+      // Cascada: recargar productos filtrados por marcas seleccionadas
       await _recargarProductos();
       aplicarFiltros();
     });
@@ -1974,7 +1975,8 @@ async function cargarFiltros(){
 
 async function _recargarProductos(){
   try{
-    const url="/api/filtros"+(_filtroMarca?"?marca="+encodeURIComponent(_filtroMarca):"");
+    const qs=_filtroMarcas.map(m=>"marca="+encodeURIComponent(m)).join("&");
+    const url="/api/filtros"+(qs?"?"+qs:"");
     const d=await api(url);if(!d)return;
     _filtroProductos=[];
     _poblarMS("ms-producto-drop",d.productos||[],"ms-producto-label","Todos los productos",()=>{
@@ -1987,11 +1989,11 @@ async function _recargarProductos(){
 }
 
 function resetFiltros(){
-  _filtroMarca="";_filtroCanal="";_filtroGrupos=[];_filtroProductos=[];
-  document.getElementById("filtro-marca").value="";
+  _filtroMarcas=[];_filtroCanal="";_filtroGrupos=[];_filtroProductos=[];
   document.getElementById("filtro-canal").value="";
   // Uncheck all multi-selects
-  document.querySelectorAll("#ms-grupo-drop input, #ms-producto-drop input").forEach(cb=>cb.checked=false);
+  document.querySelectorAll("#ms-marca-drop input, #ms-grupo-drop input, #ms-producto-drop input").forEach(cb=>cb.checked=false);
+  _updateMSLabel("ms-marca-drop","ms-marca-label","Todas las marcas");
   _updateMSLabel("ms-grupo-drop","ms-grupo-label","Todos los grupos");
   _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
   document.getElementById("filtro-reset").style.display="none";
@@ -2003,7 +2005,7 @@ function resetFiltros(){
 
 function _qs(){
   const params=[];
-  if(_filtroMarca)params.push("marca="+encodeURIComponent(_filtroMarca));
+  _filtroMarcas.forEach(m=>params.push("marca="+encodeURIComponent(m)));
   if(_filtroCanal)params.push("canal="+encodeURIComponent(_filtroCanal));
   _filtroGrupos.forEach(g=>params.push("grupo="+encodeURIComponent(g)));
   _filtroProductos.forEach(p=>params.push("producto="+encodeURIComponent(p)));
@@ -2017,19 +2019,19 @@ function aplicarFiltros(){
   // Actualizar UI inmediatamente (labels, botón limpiar)
   const btn=document.getElementById("filtro-reset");
   const lbl=document.getElementById("filtro-label");
-  const hayFiltro=_filtroMarca||_filtroCanal||_filtroGrupos.length||_filtroProductos.length;
+  const hayFiltro=_filtroMarcas.length||_filtroCanal||_filtroGrupos.length||_filtroProductos.length;
   if(hayFiltro){
     btn.style.display="inline-block";
     const parts=[];
-    if(_filtroMarca)parts.push(_filtroMarca);
+    if(_filtroMarcas.length)parts.push(_filtroMarcas.length===1?_filtroMarcas[0]:_filtroMarcas.length+" marca(s)");
     if(_filtroCanal)parts.push(_filtroCanal==="DISTRIBUCION DIFARE"?"Distribución":_filtroCanal);
     if(_filtroGrupos.length)parts.push(_filtroGrupos.length+" grupo(s)");
     if(_filtroProductos.length)parts.push(_filtroProductos.length+" producto(s)");
     lbl.textContent="Mostrando: "+parts.join(" · ");
   }else{btn.style.display="none";lbl.textContent="";}
-  // Sync dist filter too
+  // Sync dist filter too (single-select, toma la primera si hay varias)
   const distSel=document.getElementById("dist-marca-filter");
-  if(distSel){distSel.value=_filtroMarca||"";}
+  if(distSel){distSel.value=_filtroMarcas.length===1?_filtroMarcas[0]:"";}
   // Debounce: si hay un timer pendiente, cancelarlo
   if(_filtroTimer)clearTimeout(_filtroTimer);
   _filtroTimer=setTimeout(()=>_ejecutarFiltros(),300);
@@ -2190,7 +2192,7 @@ async function cargarTP(){
       if(elSubFull) elSubFull.textContent=fechaTxt;
     }
     const filas=d.filas||[];
-    if(!filas.length){body.innerHTML='<tr><td colspan="15" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
+    if(!filas.length){body.innerHTML='<tr><td colspan="16" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
     body.innerHTML=filas.map(f=>{
       const v=f.VENTA||f.venta_total||0;
       const pct=(f.PCT||0).toFixed(1);
@@ -2198,6 +2200,7 @@ async function cargarTP(){
       const uni=f.UNIVERSO_PDV||0;
       const pres=f.PDV_PRESENCIA||0;
       const cob=f.cobertura_pct||0;
+      const pdvVenta=f.PDV_VENTA_ULT_MES||0;
       const pon=f.ponderada_pct||0;
       const s0=f.stock_solo_0||0;
       const s2=f.stock_solo_2||0;
@@ -2216,6 +2219,7 @@ async function cargarTP(){
         <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${uni}</td>
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pres}</td>
         <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pdvVenta}</td>
         <td class="px-2 py-1.5 text-center" style="color:${pon>=80?'#10b981':pon>=60?'#f59e0b':'#ef4444'}">${pon}%</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${s0||""}</td>
         <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${s2||""}</td>
