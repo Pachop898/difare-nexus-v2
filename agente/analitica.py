@@ -539,29 +539,44 @@ def dias_inventario(producto: str | None = None, marca: str | None = None,
 
     # Helper: aplicar filtros a un DataFrame
     # venta: todos los filtros | bodega: solo marca/producto | pdv: marca/grupo/producto
+    # marca acepta string o lista; producto acepta string o lista.
+    def _filtrar_marca(_df):
+        if not marca or "MARCA" not in _df.columns:
+            return _df
+        if isinstance(marca, (list, tuple, set)):
+            marcas_up = set(str(m).upper() for m in marca if m)
+            if not marcas_up:
+                return _df
+            return _df[_df["MARCA"].astype(str).str.upper().isin(marcas_up)]
+        return _df[_df["MARCA"].astype(str).str.upper() == str(marca).upper()]
+
+    def _filtrar_producto(_df):
+        if not producto or "PRODUCTO" not in _df.columns:
+            return _df
+        if isinstance(producto, (list, tuple, set)):
+            prods_set = set(str(p) for p in producto if p)
+            if not prods_set:
+                return _df
+            return _df[_df["PRODUCTO"].astype(str).isin(prods_set)]
+        return _df[_df["PRODUCTO"].astype(str).str.contains(str(producto), case=False, na=False)]
+
     def _filtro_venta(df):
-        _df = df
-        if marca and "MARCA" in _df.columns:
-            _df = _df[_df["MARCA"].astype(str).str.upper() == marca.upper()]
+        _df = _filtrar_marca(df)
         if canal and "UNIDAD" in _df.columns:
             _df = _df[_df["UNIDAD"] == canal]
         if grupos and "GRUPOPDV" in _df.columns:
             raw_vals = _grupo_raw_values(grupos)
             _df = _df[_df["GRUPOPDV"].isin(raw_vals)]
-        if producto:
-            _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        _df = _filtrar_producto(_df)
         return _df
 
     def _filtro_stock(df, es_bodega=False):
-        _df = df
-        if marca and "MARCA" in _df.columns:
-            _df = _df[_df["MARCA"].astype(str).str.upper() == marca.upper()]
+        _df = _filtrar_marca(df)
         # Bodega (DIFARE S.A.) no tiene GRUPOPDV ni canal de farmacia
         if not es_bodega and grupos and "GRUPOPDV" in _df.columns:
             raw_vals = _grupo_raw_values(grupos)
             _df = _df[_df["GRUPOPDV"].isin(raw_vals)]
-        if producto:
-            _df = _df[_df["PRODUCTO"].astype(str).str.contains(producto, case=False, na=False)]
+        _df = _filtrar_producto(_df)
         return _df
 
     if df_sap is not None:
@@ -907,14 +922,16 @@ def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
 
 def oportunidad_vectorizacion(producto=None,
                               top_n: int = 0,
-                              grupo: str | None = None,
-                              marca: str | None = None) -> list[dict]:
+                              grupo=None,
+                              marca=None) -> list[dict]:
     """
     Para cada producto activo, calcula presencia, stock buckets y DOI buckets.
     - solo_pareto=False → devuelve TODOS los ítems con flag es_pareto
     - Calcula DOI por PDV: stock / promedio(proy_actual, venta_ant, venta_2ant) * 30
-    Si se pasa 'marca' o 'producto', filtra por texto.
-    Si se pasa 'grupo', recalcula solo para PDVs de ese grupo.
+    Si se pasa 'marca' o 'producto', filtra por texto (string o lista).
+    Si se pasa 'grupo', recalcula solo para PDVs de ese(esos) grupo(s).
+      grupo puede ser string (single) o lista. Con lista se computa la unión
+      de PDVs (sin caché por grupo, porque la combinatoria explota).
     Cache de 1 hora para el cálculo pesado (sin filtro de grupo).
     """
     global _cache_pareto, _cache_pareto_ts, _cache_pareto_grupo
@@ -922,15 +939,29 @@ def oportunidad_vectorizacion(producto=None,
     d = cargar_data()
     now = _time.time()
 
-    # Si hay filtro de grupo, usar caché de grupo (TTL 5 min)
+    # Normalizar grupo a lista de strings si viene con contenido
+    grupos_list = None
     if grupo:
-        grupo_key = grupo.strip().lower()
-        cached = _cache_pareto_grupo.get(grupo_key)
+        if isinstance(grupo, (list, tuple, set)):
+            grupos_list = [str(g).strip() for g in grupo if g and str(g).strip()]
+        else:
+            grupos_list = [str(grupo).strip()]
+        grupos_list = grupos_list or None
+
+    # Si hay filtro de grupo, usar caché solo si es exactamente 1 grupo
+    if grupos_list:
+        # Caché solo para el caso de 1 grupo; multi-grupo recalcula
+        if len(grupos_list) == 1:
+            grupo_key = grupos_list[0].lower()
+            cached = _cache_pareto_grupo.get(grupo_key)
+        else:
+            grupo_key = None
+            cached = None
         if cached and (now - cached[1]) < _CACHE_GRUPO_TTL:
             rows = [dict(r) for r in cached[0]]
-            print(f"[vectorización] TP grupo={grupo} desde caché — {len(rows)} productos")
+            print(f"[vectorización] TP grupo={grupos_list[0]} desde caché — {len(rows)} productos")
         else:
-            raw_vals = _grupo_raw_values([grupo])
+            raw_vals = _grupo_raw_values(grupos_list)
             df_todos_f = d["df_todos"]
             farm_stock_f = d["farm_stock_ult"]
             farm_todo_f = d["farm_todo"]
@@ -965,14 +996,15 @@ def oportunidad_vectorizacion(producto=None,
             rows = _calcular_doi_buckets(d_grupo, rows, df_farm_src=df_farm_grupo)
 
             elapsed = round(_time.time() - t0, 1)
-            print(f"[vectorización] TP grupo={grupo} calculado en {elapsed}s — {len(rows)} productos")
+            print(f"[vectorización] TP grupo(s)={grupos_list} calculado en {elapsed}s — {len(rows)} productos")
 
-            # Guardar en caché de grupo
-            _cache_pareto_grupo[grupo_key] = (rows, now)
-            # Limpiar cachés viejos (máx 10 grupos)
-            if len(_cache_pareto_grupo) > 10:
-                oldest = min(_cache_pareto_grupo, key=lambda k: _cache_pareto_grupo[k][1])
-                del _cache_pareto_grupo[oldest]
+            # Guardar en caché solo para el caso de 1 grupo
+            if grupo_key:
+                _cache_pareto_grupo[grupo_key] = (rows, now)
+                # Limpiar cachés viejos (máx 10 grupos)
+                if len(_cache_pareto_grupo) > 10:
+                    oldest = min(_cache_pareto_grupo, key=lambda k: _cache_pareto_grupo[k][1])
+                    del _cache_pareto_grupo[oldest]
 
             rows = [dict(r) for r in rows]  # deep copy para no mutar caché
     else:

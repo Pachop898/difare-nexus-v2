@@ -124,9 +124,9 @@ def dois():
     if err: return err
     try:
         marca, canal, grupos, productos = _parse_filtros()
-        producto = productos[0] if productos else None
+        # Pasar lista completa de productos (dias_inventario soporta str o lista)
         return jsonify(analitica.dias_inventario(
-            producto=producto, marca=marca, canal=canal, grupos=grupos)), 200
+            producto=productos, marca=marca, canal=canal, grupos=grupos)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -242,9 +242,10 @@ def tienda_perfecta():
     if err: return err
     try:
         marca, canal, grupos, productos = _parse_filtros()
-        grupo = grupos[0] if grupos else None
+        # grupo ahora soporta lista (multi-select); oportunidad_vectorizacion
+        # acepta string o lista.
         rows = analitica.oportunidad_vectorizacion(
-            marca=marca, producto=productos if productos else None, grupo=grupo
+            marca=marca, producto=productos if productos else None, grupo=grupos
         )
         # Calcular buckets EXCLUSIVOS de stock
         for r in rows:

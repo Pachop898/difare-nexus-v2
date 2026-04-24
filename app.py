@@ -1163,15 +1163,27 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- ══════ MÓDULO: Tienda Perfecta ══════ -->
   <div id="mod-tienda-perfecta" class="module">
 
-  <!-- Filtros propios de Tienda Perfecta -->
+  <!-- Filtros propios de Tienda Perfecta (todos multi-select) -->
   <div class="flex flex-wrap items-center gap-3 mb-4" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px">
     <span style="color:var(--gold);font-size:12px;font-weight:600;letter-spacing:0.5px">FILTROS TP</span>
-    <select id="tp-filtro-marca" onchange="_actualizarProductosTP();cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
-      <option value="">Todas las marcas</option>
-    </select>
-    <select id="tp-filtro-grupo" onchange="cargarTPConFiltros()" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:160px">
-      <option value="">Todos los grupos</option>
-    </select>
+
+    <!-- Marca TP (multi-select) -->
+    <div class="ms-wrap" id="tp-marca-wrap">
+      <button type="button" class="ms-btn" id="tp-marca-btn" onclick="toggleMS('tp-marca')">
+        <span id="tp-marca-label">Todas las marcas</span><span class="ms-arrow">▼</span>
+      </button>
+      <div class="ms-drop" id="tp-marca-drop"></div>
+    </div>
+
+    <!-- Grupo TP (multi-select) -->
+    <div class="ms-wrap" id="tp-grupo-wrap">
+      <button type="button" class="ms-btn" id="tp-grupo-btn" onclick="toggleMS('tp-grupo')">
+        <span id="tp-grupo-label">Todos los grupos</span><span class="ms-arrow">▼</span>
+      </button>
+      <div class="ms-drop" id="tp-grupo-drop"></div>
+    </div>
+
+    <!-- Producto TP (multi-select existente) -->
     <div class="ms-wrap" style="position:relative;display:inline-block;min-width:200px">
       <div id="tp-prod-label" onclick="toggleTPProd()"
            style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:200px">
@@ -1735,8 +1747,11 @@ let _filtroProductos=[]; // array de strings
 
 // Multi-select helpers
 function toggleMS(name){
-  const drop=document.getElementById("ms-"+name+"-drop");
-  // Close other dropdowns first
+  // Acepta nombres con prefijo (ej: "tp-marca" → "tp-marca-drop") o sin él
+  // (ej: "marca" → "ms-marca-drop"). Los dropdowns TP usan su propio prefijo.
+  const direct = document.getElementById(name+"-drop");
+  const drop = direct || document.getElementById("ms-"+name+"-drop");
+  if (!drop) return;
   document.querySelectorAll(".ms-drop.open").forEach(d=>{if(d!==drop)d.classList.remove("open");});
   drop.classList.toggle("open");
 }
@@ -1886,22 +1901,35 @@ function _updateMSLabel(containerId, labelId, defaultLabel){
 // Almacenar todos los productos por marca para filtrado dinámico
 window._tpAllProducts=[];
 window._tpProductsByMarca={};
+// Estado de multi-select propios del módulo TP
+window._tpFiltroMarcas=[];
+window._tpFiltroGrupos=[];
 
 async function cargarFiltrosTP(data){
-  const selM=document.getElementById("tp-filtro-marca");
-  const selG=document.getElementById("tp-filtro-grupo");
-  if(!selM||!selG)return;
-  if(selM.options.length<=1){
-    (data.marcas||[]).forEach(m=>{const o=document.createElement("option");o.value=m;o.textContent=m;selM.appendChild(o);});
+  const dropM=document.getElementById("tp-marca-drop");
+  const dropG=document.getElementById("tp-grupo-drop");
+  if(!dropM||!dropG)return;
+  // Poblar marca TP (multi-select) si aún no tiene contenido
+  if(!dropM.querySelector("input[type=checkbox]")){
+    _poblarMS("tp-marca-drop",data.marcas||[],"tp-marca-label","Todas las marcas",()=>{
+      window._tpFiltroMarcas=_getChecked("tp-marca-drop");
+      _updateMSLabel("tp-marca-drop","tp-marca-label","Todas las marcas");
+      _actualizarProductosTP();
+      cargarTPConFiltros();
+    });
   }
-  if(selG.options.length<=1){
-    (data.grupos||[]).forEach(g=>{const o=document.createElement("option");o.value=g;o.textContent=g;selG.appendChild(o);});
+  // Poblar grupo TP (multi-select)
+  if(!dropG.querySelector("input[type=checkbox]")){
+    _poblarMS("tp-grupo-drop",data.grupos||[],"tp-grupo-label","Todos los grupos",()=>{
+      window._tpFiltroGrupos=_getChecked("tp-grupo-drop");
+      _updateMSLabel("tp-grupo-drop","tp-grupo-label","Todos los grupos");
+      cargarTPConFiltros();
+    });
   }
   // Guardar productos completos para filtrado dinámico
   if(data.productos&&!window._tpAllProducts.length){
     window._tpAllProducts=data.productos;
   }
-  // Guardar mapeo marca→productos
   if(data.productos_por_marca){
     window._tpProductsByMarca=data.productos_por_marca;
   }
@@ -1910,10 +1938,13 @@ async function cargarFiltrosTP(data){
 }
 
 function _actualizarProductosTP(){
-  const marca=document.getElementById("tp-filtro-marca")?.value||"";
+  // Unión de productos de todas las marcas seleccionadas (si hay alguna).
   let prods;
-  if(marca&&window._tpProductsByMarca&&window._tpProductsByMarca[marca]){
-    prods=window._tpProductsByMarca[marca];
+  const marcasSel=window._tpFiltroMarcas||[];
+  if(marcasSel.length&&window._tpProductsByMarca){
+    const set=new Set();
+    marcasSel.forEach(m=>{(window._tpProductsByMarca[m]||[]).forEach(p=>set.add(p));});
+    prods=Array.from(set).sort();
   }else{
     prods=window._tpAllProducts||[];
   }
@@ -2047,10 +2078,8 @@ async function _ejecutarFiltros(){
 // ── Filtros independientes para Tienda Perfecta ──
 function _tpQs(){
   const params=[];
-  const m=document.getElementById("tp-filtro-marca");
-  const g=document.getElementById("tp-filtro-grupo");
-  if(m&&m.value)params.push("marca="+encodeURIComponent(m.value));
-  if(g&&g.value)params.push("grupo="+encodeURIComponent(g.value));
+  (window._tpFiltroMarcas||[]).forEach(m=>params.push("marca="+encodeURIComponent(m)));
+  (window._tpFiltroGrupos||[]).forEach(g=>params.push("grupo="+encodeURIComponent(g)));
   // Multi-select de productos
   const prods=_getChecked("tp-prod-drop");
   prods.forEach(p=>params.push("producto="+encodeURIComponent(p)));
@@ -2285,8 +2314,10 @@ async function cargarVisibilidad(){
 let _distFiltrosInit=false;
 async function cargarDist(){
   try{
-    const tpM=document.getElementById("tp-filtro-marca");
-    const marca=(tpM&&tpM.value)||document.getElementById("dist-marca-filter").value||"";
+    // Si hay una sola marca TP seleccionada, propagar al gráfico de Distribución.
+    const tpMarcas=window._tpFiltroMarcas||[];
+    const marcaTP=tpMarcas.length===1?tpMarcas[0]:"";
+    const marca=marcaTP||document.getElementById("dist-marca-filter").value||"";
     const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):""),45000); if(!d) return;
     if(d.error){return;}
     // Poblar select de marcas solo la primera vez
