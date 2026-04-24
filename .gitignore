@@ -12,6 +12,17 @@ env/
 .env
 *.env.local
 
+# Base de datos local (no versionar — muy grande, cambia cada run)
+api/data.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentos sincronizados por OneDrive (mover a docs/ en disco)
+docs/
+*.pptx
+*.docx
+
 # Editor / SO
 .vscode/
 .idea/
