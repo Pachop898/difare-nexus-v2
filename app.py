@@ -1214,6 +1214,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">PDV</th>
               <th class="text-center px-2 py-2">Presencia</th>
               <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2" title="PDVs con venta en el último mes completo / PDVs con presencia">%Pon</th>
               <th class="text-center px-2 py-2" style="color:#ef4444">#PDV<br>Stock=0</th>
               <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV<br>Stock≤2</th>
               <th class="text-center px-2 py-2" style="color:#f97316">DOI<br>≤20</th>
@@ -1222,7 +1223,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2" style="color:#8b5cf6">DOI<br>&gt;60</th>
             </tr>
           </thead>
-          <tbody id="tp-body"><tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+          <tbody id="tp-body"><tr><td colspan="15" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -2183,7 +2184,7 @@ async function cargarTP(){
       if(elSubFull) elSubFull.textContent=fechaTxt;
     }
     const filas=d.filas||[];
-    if(!filas.length){body.innerHTML='<tr><td colspan="14" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
+    if(!filas.length){body.innerHTML='<tr><td colspan="15" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
     body.innerHTML=filas.map(f=>{
       const v=f.VENTA||f.venta_total||0;
       const pct=(f.PCT||0).toFixed(1);
@@ -2191,6 +2192,7 @@ async function cargarTP(){
       const uni=f.UNIVERSO_PDV||0;
       const pres=f.PDV_PRESENCIA||0;
       const cob=f.cobertura_pct||0;
+      const pon=f.ponderada_pct||0;
       const s0=f.stock_solo_0||0;
       const s2=f.stock_solo_2||0;
       const d1=f.DOI_LE20||0;
@@ -2208,6 +2210,7 @@ async function cargarTP(){
         <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${uni}</td>
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pres}</td>
         <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:${pon>=80?'#10b981':pon>=60?'#f59e0b':'#ef4444'}">${pon}%</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${s0||""}</td>
         <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${s2||""}</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#f97316">${d1||""}</td>

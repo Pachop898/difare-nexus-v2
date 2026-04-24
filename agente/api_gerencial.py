@@ -247,6 +247,9 @@ def tienda_perfecta():
             uni = r.get("UNIVERSO_PDV", 0) or 1
             pres = r.get("PDV_PRESENCIA", 0) or 0
             r["cobertura_pct"] = round(pres / uni * 100, 1)
+            # %Pon (ponderada) = PDVs con venta en último mes completo / PDVs con presencia
+            venta_ult = r.get("PDV_VENTA_ULT_MES", 0) or 0
+            r["ponderada_pct"] = round(venta_ult / pres * 100, 1) if pres > 0 else 0.0
         # Obtener fecha del último día de stock
         from agente import generar_pdfs as gp
         try:

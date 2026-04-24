@@ -259,6 +259,23 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
         # Todos los ítems con venta > 0
         items = venta_prod[venta_prod["venta_total"] > 0].copy()
 
+    # ── PDVs con venta en el último mes completo — por producto ──
+    # Se usa para el %Pon (ponderada) = PDV con venta último mes / PDV presencia
+    mes_ult_completo = None
+    venta_ult_mes_por_prod = {}
+    if "MES" in df_farm_todos.columns and "POS" in df_farm_todos.columns:
+        meses_ord = sorted(df_farm_todos["MES"].dropna().unique())
+        if meses_ord:
+            mes_ult_completo = meses_ord[-1]
+            df_ult_mes = df_farm_todos[
+                (df_farm_todos["MES"] == mes_ult_completo)
+                & (df_farm_todos["VENTA NETA RECUPERO"] > 0)
+            ]
+            if not df_ult_mes.empty:
+                venta_ult_mes_por_prod = (
+                    df_ult_mes.groupby("IDNEPTUNO")["POS"].nunique().to_dict()
+                )
+
     resultado = []
     for _, row in items.iterrows():
         idneptuno = row["IDNEPTUNO"]
@@ -307,6 +324,8 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             except (ValueError, TypeError):
                 pass
 
+        pdv_venta_ult_mes = int(venta_ult_mes_por_prod.get(idneptuno, 0))
+
         resultado.append({
             "IDNEPTUNO": idneptuno,
             "IDDIFARE": iddifare,
@@ -318,6 +337,8 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             "es_pareto": bool(row["es_pareto"]),
             "UNIVERSO_PDV": universo_pdv,
             "PDV_PRESENCIA": presencia,
+            "PDV_VENTA_ULT_MES": pdv_venta_ult_mes,
+            "MES_ULT_COMPLETO": int(mes_ult_completo) if mes_ult_completo is not None else None,
             "STOCK_0": stock_eq0,
             "STOCK_1": stock_leq1,
             "STOCK_2": stock_leq2,
