@@ -33,7 +33,15 @@ def get_anthropic_client():
 # ── CONFIG ──
 JWT_SECRET = os.getenv("JWT_SECRET", "difare-nexus-secret-cambiar-en-produccion")
 JWT_EXPIRY = 1800  # 30 minutos — sesión corta para seguridad
-APP_VERSION = str(int(time.time()))  # Automático: cada deploy genera versión única
+# APP_VERSION: se fija desde env var RAILWAY_GIT_COMMIT_SHA (inyectado por Railway
+# en cada deploy) o desde APP_VERSION manual. Solo cambia cuando cambia el código,
+# NO cuando un worker reinicia (OOM, redeploy, etc.). Esto evita que el usuario
+# sea expulsado al login si el worker reinicia durante una sesión activa.
+APP_VERSION = (
+    os.getenv("APP_VERSION")
+    or os.getenv("RAILWAY_GIT_COMMIT_SHA", "")[:12]
+    or "dev"
+)
 # data.db: buscar en varias ubicaciones (Railway, Vercel, local)
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _DB_CANDIDATES = [
@@ -252,15 +260,12 @@ def branding_file(filename):
 
 @app.route("/health", methods=["GET"])
 def health():
-    # Mantener datos calientes: si el caché de pandas expiró, recargarlo
-    # en background para que el próximo request del usuario sea rápido.
-    try:
-        from agente import analitica
-        if hasattr(analitica, '_cache') and not analitica._cache:
-            import threading
-            threading.Thread(target=analitica.cargar_data, daemon=True).start()
-    except Exception:
-        pass
+    # Health-check mínimo. NO spawnear threads de cargar_data() aquí.
+    # Razón: UptimeRobot + keep_alive + Railway pingean /health con alta
+    # frecuencia; si cada ping con caché vacío lanzaba un thread nuevo,
+    # varios cargar_data() se ejecutaban en paralelo durante el cold start
+    # → duplicación de memoria → OOM. El pre-warm en _prewarm() ya se
+    # encarga de cargar los datos al arrancar el worker.
     return jsonify({"status": "ok"}), 200
 
 @app.route("/health/db", methods=["GET"])
@@ -1699,7 +1704,8 @@ function mostrarError(msg){
 }
 
 // ── Esperar a que el servidor termine de cargar data ──
-async function waitForReady(maxWait=120){
+// 240s = cubre cold starts largos en Railway; si excede, procede igual
+async function waitForReady(maxWait=240){
   const overlay=document.getElementById("loading-overlay");
   const sub=document.getElementById("loading-sub");
   overlay.style.display="flex";

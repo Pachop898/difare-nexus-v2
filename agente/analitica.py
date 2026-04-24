@@ -108,6 +108,11 @@ _cache = {}
 _cache_ts = 0  # timestamp de última carga
 _CACHE_TTL = 43200  # 12 horas — los Excel no cambian durante el día
 import time as _time
+import threading as _threading
+# Lock global para que solo UN hilo haga la carga pesada a la vez.
+# Evita que el pre-warm y un request concurrente ambos lean los Excel
+# en paralelo → doble memoria → riesgo OOM en Railway.
+_cargar_lock = _threading.Lock()
 
 def _carpeta():
     return EXCELS_DIR if os.path.isdir(EXCELS_DIR) else "excels"
@@ -141,49 +146,61 @@ def cargar_data(force: bool = False) -> dict:
                 return _cache
         print("[analitica] Cache expirado o excels actualizados, recargando…")
 
-    carpeta = _carpeta()
-    t0 = _time.time()
-    df_todos = gp.cargar_todos_excels(carpeta)
-    bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
-    # Universo = PDVs farmacias con venta>0 O stock>0 en TODOS los meses
-    # Usar CODIGOPDV (código numérico único) para evitar duplicados por variación de nombre
-    df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
-    _id_col = "CODIGOPDV" if ("CODIGOPDV" in df_farm_todos.columns if not df_farm_todos.empty else False) else "POS"
-    if not df_farm_todos.empty and _id_col in df_farm_todos.columns:
-        _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0][_id_col].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
-        _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0][_id_col].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
-        universo = len(_pv | _ps) if (_pv or _ps) else gp.calcular_universo_pdv(carpeta)
-    else:
-        universo = gp.calcular_universo_pdv(carpeta)
-    stock_por_mes = gp.cargar_stock_por_mes(carpeta)
-    ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
+    # Serializar la carga pesada: si otro hilo ya la está haciendo,
+    # este espera y luego encuentra el caché listo.
+    with _cargar_lock:
+        # Re-chequear bajo el lock: otro hilo pudo haber llenado el caché
+        now = _time.time()
+        if _cache and not force and (now - _cache_ts) < _CACHE_TTL:
+            try:
+                if _excels_mtime() <= _cache_ts:
+                    return _cache
+            except Exception:
+                return _cache
 
-    # Pre-cachear SAP DataFrame para evitar re-lectura de Excel en cada request
-    df_sap_cached = None
-    try:
-        sap_path = gp.detectar_archivo_sap(carpeta)
-        if sap_path:
-            df_sap_cached = pd.read_excel(sap_path)
-    except Exception as e:
-        print(f"[analitica] WARN: No se pudo pre-cachear SAP ({e}), se usará df_todos como fallback")
+        carpeta = _carpeta()
+        t0 = _time.time()
+        df_todos = gp.cargar_todos_excels(carpeta)
+        bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
+        # Universo = PDVs farmacias con venta>0 O stock>0 en TODOS los meses
+        # Usar CODIGOPDV (código numérico único) para evitar duplicados por variación de nombre
+        df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
+        _id_col = "CODIGOPDV" if ("CODIGOPDV" in df_farm_todos.columns if not df_farm_todos.empty else False) else "POS"
+        if not df_farm_todos.empty and _id_col in df_farm_todos.columns:
+            _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0][_id_col].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
+            _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0][_id_col].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
+            universo = len(_pv | _ps) if (_pv or _ps) else gp.calcular_universo_pdv(carpeta)
+        else:
+            universo = gp.calcular_universo_pdv(carpeta)
+        stock_por_mes = gp.cargar_stock_por_mes(carpeta)
+        ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
 
-    elapsed = round(_time.time() - t0, 1)
-    print(f"[analitica] Data cargada en {elapsed}s — {len(df_todos)} filas")
+        # Pre-cachear SAP DataFrame para evitar re-lectura de Excel en cada request
+        df_sap_cached = None
+        try:
+            sap_path = gp.detectar_archivo_sap(carpeta)
+            if sap_path:
+                df_sap_cached = pd.read_excel(sap_path)
+        except Exception as e:
+            print(f"[analitica] WARN: No se pudo pre-cachear SAP ({e}), se usará df_todos como fallback")
 
-    _cache.update({
-        "df_todos": df_todos,
-        "bodega": bodega,
-        "farm_stock_ult": farm_stock_ult,
-        "farm_todo": farm_todo,
-        "universo_pdv": universo,
-        "stock_por_mes": stock_por_mes,
-        "ultimo_dia_venta": ultimo_dia,
-        "dias_mes": dias_mes,
-        "mes_completo": mes_completo,
-        "df_sap": df_sap_cached,
-    })
-    _cache_ts = _time.time()
-    return _cache
+        elapsed = round(_time.time() - t0, 1)
+        print(f"[analitica] Data cargada en {elapsed}s — {len(df_todos)} filas")
+
+        _cache.update({
+            "df_todos": df_todos,
+            "bodega": bodega,
+            "farm_stock_ult": farm_stock_ult,
+            "farm_todo": farm_todo,
+            "universo_pdv": universo,
+            "stock_por_mes": stock_por_mes,
+            "ultimo_dia_venta": ultimo_dia,
+            "dias_mes": dias_mes,
+            "mes_completo": mes_completo,
+            "df_sap": df_sap_cached,
+        })
+        _cache_ts = _time.time()
+        return _cache
 
 
 def invalidar_cache():
