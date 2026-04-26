@@ -33,7 +33,17 @@ def get_anthropic_client():
 
 # ── CONFIG ──
 JWT_SECRET = os.getenv("JWT_SECRET", "difare-nexus-secret-cambiar-en-produccion")
-JWT_EXPIRY = 1800  # 30 minutos — sesión corta para seguridad
+# JWT_EXPIRY: duración de la sesión en segundos. Default 8h (28800s) cubre un
+# día laboral completo — el usuario hace login en la mañana y no es expulsado
+# por inactividad durante revisiones de negocio. Configurable vía env var
+# JWT_EXPIRY_HOURS (acepta horas, ej. "8" o "12").
+_jwt_horas_env = os.getenv("JWT_EXPIRY_HOURS", "").strip()
+try:
+    _jwt_horas = float(_jwt_horas_env) if _jwt_horas_env else 8.0
+except ValueError:
+    _jwt_horas = 8.0
+JWT_EXPIRY = int(_jwt_horas * 3600)
+print(f"[v2] JWT_EXPIRY = {JWT_EXPIRY}s ({_jwt_horas}h)")
 # APP_VERSION: se fija desde env var RAILWAY_GIT_COMMIT_SHA (inyectado por Railway
 # en cada deploy) o desde APP_VERSION manual. Solo cambia cuando cambia el código,
 # NO cuando un worker reinicia (OOM, redeploy, etc.). Esto evita que el usuario
@@ -151,6 +161,38 @@ def verificar_jwt(token):
         return datos.get("sub")
     except Exception:
         return None
+
+
+def _token_proximo_a_expirar(token: str, umbral_segundos: int = 7200) -> bool:
+    """True si el token vence en menos de `umbral_segundos` (default 2h)."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return False
+        datos = json.loads(_b64d(parts[1]))
+        return (datos.get("exp", 0) - time.time()) < umbral_segundos
+    except Exception:
+        return False
+
+
+@app.after_request
+def _renovar_token_si_proximo_a_expirar(response):
+    """Renueva el JWT silenciosamente si el usuario está activo y al token le
+    queda <2h. Lo emite en el header X-New-Token; el frontend lo guarda en
+    localStorage. Así, mientras el usuario haga requests, nunca lo kickea."""
+    try:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if not token:
+            token = request.args.get("token", "")
+        if token and _token_proximo_a_expirar(token):
+            usuario = verificar_jwt(token)
+            if usuario:
+                response.headers["X-New-Token"] = crear_jwt(usuario)
+                response.headers["Access-Control-Expose-Headers"] = "X-New-Token"
+    except Exception:
+        pass
+    return response
+
 
 def auth_user():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -667,13 +709,17 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       .content-area{margin-left:50px}
     }
     /* ── Sticky columns for TP table ── */
-    .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;z-index:2;background:inherit}
+    /* Sticky horizontal (todas las columnas Marca/Producto, en thead y tbody) */
+    .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;background:inherit}
     .dash-table th.sticky-col-1, .dash-table td.sticky-col-1{left:0;min-width:90px;max-width:110px}
     .dash-table th.sticky-col-2, .dash-table td.sticky-col-2{left:90px;min-width:240px;max-width:280px;border-right:2px solid var(--border);white-space:normal;word-break:break-word;line-height:1.3}
-    /* THEAD sticky a top + sticky-col también sticky a left → necesitan top:0
-       y z-index alto para que queden por encima de las celdas tbody al scrollear. */
-    .dash-table thead th.sticky-col{background:var(--blue)!important;top:0;z-index:5}
-    .dash-table thead th{position:sticky;top:0;z-index:4;background:var(--blue)}
+    /* Sticky vertical para THEAD: cada TH se pega individualmente (no el THEAD)
+       porque position:sticky en <thead>/<tr> es poco confiable cross-browser.
+       Las celdas Marca/Producto del header además son sticky horizontal, por
+       eso necesitan z-index mayor que las celdas sticky del tbody y que las
+       no-sticky del header. */
+    .dash-table thead th{position:sticky;top:0;background:var(--blue);z-index:10}
+    .dash-table thead th.sticky-col{background:var(--blue)!important;top:0;z-index:20}
     .dash-table tbody td.sticky-col{background:var(--navy2);z-index:1}
   </style>
   <section class="card p-4" id="filtros-bar">
@@ -873,7 +919,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
       <div class="overflow-auto max-h-[480px]">
         <table class="w-full text-xs dash-table" id="tp-table">
-          <thead class="sticky top-0" style="background:var(--blue);color:var(--gold)">
+          <thead style="background:var(--blue);color:var(--gold)">
             <tr>
               <th class="text-left px-2 py-2 sticky-col sticky-col-1">Marca</th>
               <th class="text-left px-2 py-2 sticky-col sticky-col-2">Producto</th>
@@ -1305,12 +1351,21 @@ function logout(){
   window.location.href="/";
 }
 
+// Si el server emite un X-New-Token (porque al actual le quedaba <2h),
+// guardarlo en localStorage para que la sesión se renueve silenciosamente.
+function _maybeRenovarToken(response){
+  try{
+    const nuevo = response.headers.get("X-New-Token");
+    if(nuevo){ TK = nuevo; localStorage.setItem("nx_tk", nuevo); }
+  }catch(e){}
+}
 async function api(path, timeoutMs=90000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
     const r=await fetch(S+path,{headers:AH,signal:ctrl.signal});
     clearTimeout(tid);
+    _maybeRenovarToken(r);
     if(r.status===401){logout();return null;}
     return r.json();
   }catch(e){
@@ -2704,6 +2759,14 @@ function _loadingConContador(elementId, mensaje){
   return () => clearInterval(tid);
 }
 
+// Si el server emite X-New-Token (sesión próxima a expirar pero usuario activo),
+// guardarlo silenciosamente en localStorage para extender la sesión.
+function _maybeRenovarToken(response){
+  try{
+    const nuevo = response.headers.get("X-New-Token");
+    if(nuevo){ TK = nuevo; localStorage.setItem("nx_tk", nuevo); }
+  }catch(e){}
+}
 // Fetch con timeout largo + 2 reintentos para endpoints lentos (cold start).
 async function _fetchConRetry(url, opciones={}, timeoutMs=120000, maxIntentos=2){
   for (let i=1; i<=maxIntentos; i++){
@@ -2712,6 +2775,7 @@ async function _fetchConRetry(url, opciones={}, timeoutMs=120000, maxIntentos=2)
     try {
       const r = await fetch(url, {...opciones, signal: ctrl.signal});
       clearTimeout(tid);
+      _maybeRenovarToken(r);
       return r;
     } catch (e) {
       clearTimeout(tid);
