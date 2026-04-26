@@ -1960,48 +1960,59 @@ function _actualizarProductosTP(){
 let _filtrosYaCargados=false;
 async function cargarFiltros(){
   if(_filtrosYaCargados) return; // evitar duplicar opciones en retries
+  let d=null;
   try{
-    const d=await api("/api/filtros");if(!d)return;
-    // Poblar filtros de TP también (en try separado para no bloquear dashboard)
-    try{ cargarFiltrosTP(d); }catch(e2){console.warn("filtrosTP:",e2);}
-    // Marca (multi-select checkboxes, cascadea productos)
+    d=await api("/api/filtros");
+  }catch(e){console.error("[filtros] api/filtros THREW:",e);}
+  if(!d){console.warn("[filtros] respuesta vacía/null"); return;}
+  if(d.error){console.error("[filtros] backend respondió error:",d.error); return;}
+  console.log("[filtros] payload recibido:",
+    {marcas:(d.marcas||[]).length, canales:(d.canales||[]).length,
+     grupos:(d.grupos||[]).length, productos:(d.productos||[]).length});
+  // Cada bloque en su propio try/catch — si uno falla los demás siguen
+  try{ cargarFiltrosTP(d); }catch(e){console.error("[filtros] TP:",e);}
+  try{
     _poblarMS("ms-marca-drop",d.marcas||[],"ms-marca-label","Todas las marcas",async()=>{
       _filtroMarcas=_getChecked("ms-marca-drop");
       _updateMSLabel("ms-marca-drop","ms-marca-label","Todas las marcas");
-      // Cascada: recargar productos filtrados por marcas seleccionadas
       await _recargarProductos();
       aplicarFiltros();
     });
-    // Canal (single select)
+  }catch(e){console.error("[filtros] marca:",e);}
+  try{
     const selCanal=document.getElementById("filtro-canal");
-    if(selCanal.options.length<=1){
-      (d.canales||[]).forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;selCanal.appendChild(o);});
+    if(selCanal && selCanal.options.length<=1){
+      (d.canales||[]).forEach(c=>{
+        const o=document.createElement("option");o.value=c;
+        o.textContent=c==="DISTRIBUCION DIFARE"?"Distribución":c==="FARMACIAS"?"Farmacias":c;
+        selCanal.appendChild(o);
+      });
     }
-    selCanal.addEventListener("change",()=>{_filtroCanal=selCanal.value;aplicarFiltros();});
-    // Grupo PDV (multi-select) — auto-selecciona canal Farmacias
+    if(selCanal) selCanal.addEventListener("change",()=>{_filtroCanal=selCanal.value;aplicarFiltros();});
+  }catch(e){console.error("[filtros] canal:",e);}
+  try{
     _poblarMS("ms-grupo-drop",d.grupos||[],"ms-grupo-label","Todos los grupos",()=>{
       _filtroGrupos=_getChecked("ms-grupo-drop");
       _updateMSLabel("ms-grupo-drop","ms-grupo-label","Todos los grupos");
-      // Grupos son exclusivos de Farmacias → forzar canal
       if(_filtroGrupos.length&&_filtroCanal!=="FARMACIAS"){
         _filtroCanal="FARMACIAS";
-        document.getElementById("filtro-canal").value="FARMACIAS";
+        const sc=document.getElementById("filtro-canal"); if(sc) sc.value="FARMACIAS";
       }
-      // Si deseleccionan todos los grupos, liberar canal
       if(!_filtroGrupos.length&&_filtroCanal==="FARMACIAS"){
         _filtroCanal="";
-        document.getElementById("filtro-canal").value="";
+        const sc=document.getElementById("filtro-canal"); if(sc) sc.value="";
       }
       aplicarFiltros();
     });
-    // Producto (multi-select)
+  }catch(e){console.error("[filtros] grupo:",e);}
+  try{
     _poblarMS("ms-producto-drop",d.productos||[],"ms-producto-label","Todos los productos",()=>{
       _filtroProductos=_getChecked("ms-producto-drop");
       _updateMSLabel("ms-producto-drop","ms-producto-label","Todos los productos");
       aplicarFiltros();
     });
-    _filtrosYaCargados=true;
-  }catch(e){console.warn("filtros:",e);}
+  }catch(e){console.error("[filtros] producto:",e);}
+  _filtrosYaCargados=true;
 }
 
 async function _recargarProductos(){
@@ -2626,8 +2637,23 @@ _data_ready = False
 
 @app.route("/api/ready")
 def api_ready():
-    """Health-check: ¿ya terminó el pre-warm de data?"""
-    return jsonify({"ready": _data_ready})
+    """Health-check: ¿ya terminó el pre-warm de data?
+
+    Devuelve ready=False si:
+      - El pre-warm aún no terminó tras un boot fresco, O
+      - El caché en memoria de pandas expiró/se vació (después de >12h
+        sin requests, o tras una recarga forzada). Esto hace que el
+        frontend vuelva a mostrar el overlay de "Procesando datos…"
+        en lugar de presentar valores en 0 mientras la data se carga.
+    """
+    try:
+        from agente import analitica as _an
+        cache_vacio = not getattr(_an, "_cache", None)
+        cargando = bool(getattr(_an, "_cargando", False))
+    except Exception:
+        cache_vacio = False
+        cargando = False
+    return jsonify({"ready": _data_ready and not cache_vacio and not cargando})
 
 
 # ══════════════════════════════════════════════════════════════

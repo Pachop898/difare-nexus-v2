@@ -113,6 +113,9 @@ import threading as _threading
 # Evita que el pre-warm y un request concurrente ambos lean los Excel
 # en paralelo → doble memoria → riesgo OOM en Railway.
 _cargar_lock = _threading.Lock()
+# Flag: True mientras un hilo está leyendo Excels (carga inicial o recarga
+# por TTL). Usado por /api/ready para mostrar overlay de "cargando".
+_cargando = False
 
 def _carpeta():
     return EXCELS_DIR if os.path.isdir(EXCELS_DIR) else "excels"
@@ -148,6 +151,7 @@ def cargar_data(force: bool = False) -> dict:
 
     # Serializar la carga pesada: si otro hilo ya la está haciendo,
     # este espera y luego encuentra el caché listo.
+    global _cargando
     with _cargar_lock:
         # Re-chequear bajo el lock: otro hilo pudo haber llenado el caché
         now = _time.time()
@@ -158,6 +162,7 @@ def cargar_data(force: bool = False) -> dict:
             except Exception:
                 return _cache
 
+        _cargando = True
         carpeta = _carpeta()
         t0 = _time.time()
         df_todos = gp.cargar_todos_excels(carpeta)
@@ -200,6 +205,7 @@ def cargar_data(force: bool = False) -> dict:
             "df_sap": df_sap_cached,
         })
         _cache_ts = _time.time()
+        _cargando = False
         return _cache
 
 
