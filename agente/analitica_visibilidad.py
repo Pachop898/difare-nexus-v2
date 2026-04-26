@@ -248,13 +248,6 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "venta_prom_sin": round(venta_prom_sin, 2),
             "lift_pct": lift,
             "cobertura_pct": cobertura_pct,
-            # placeholders por compatibilidad (frontend ya no los muestra)
-            "stock_0": 0,
-            "stock_1": 0,
-            "stock_2": 0,
-            "stock_3plus": 0,
-            "pdv_con_stock": len(pdv_con_stock),
-            "pdv_sin_stock": len(pdv_sin_stock),
         })
 
     # Ordenar por venta total desc
