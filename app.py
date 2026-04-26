@@ -44,15 +44,13 @@ except ValueError:
     _jwt_horas = 8.0
 JWT_EXPIRY = int(_jwt_horas * 3600)
 print(f"[v2] JWT_EXPIRY = {JWT_EXPIRY}s ({_jwt_horas}h)")
-# APP_VERSION: se fija desde env var RAILWAY_GIT_COMMIT_SHA (inyectado por Railway
-# en cada deploy) o desde APP_VERSION manual. Solo cambia cuando cambia el código,
-# NO cuando un worker reinicia (OOM, redeploy, etc.). Esto evita que el usuario
-# sea expulsado al login si el worker reinicia durante una sesión activa.
-APP_VERSION = (
-    os.getenv("APP_VERSION")
-    or os.getenv("RAILWAY_GIT_COMMIT_SHA", "")[:12]
-    or "dev"
-)
+# APP_VERSION: identificador estable de la sesión. Se usa para invalidar los
+# JWT cuando explícitamente cambiamos algo crítico de auth/sesión. NO debe
+# cambiar en cada deploy normal (eso kickeaba al usuario al login en cada push).
+# Para forzar el cierre de sesión global tras un cambio de auth, bumpear el
+# valor por defecto abajo o setear la env var APP_VERSION en Railway.
+APP_VERSION = os.getenv("APP_VERSION", "v2-2026-04").strip() or "v2-2026-04"
+print(f"[v2] APP_VERSION = {APP_VERSION}")
 # data.db: buscar en varias ubicaciones (Railway, Vercel, local)
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _DB_CANDIDATES = [
