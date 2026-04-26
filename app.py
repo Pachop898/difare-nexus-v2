@@ -1200,64 +1200,94 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </section>
   </div>
 
-  <!-- ══════ MÓDULO: Oportunidades de Facturación ══════ -->
+  <!-- ══════ MÓDULO: Oportunidades — análisis accionable KAM ══════ -->
   <div id="mod-oportunidades" class="module">
+    <!-- ── Sección B: Ampliar Vectorización ── -->
     <section class="card p-6">
-      <div class="mb-4" style="display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <h2 style="color:var(--white);font-size:20px;font-weight:700">Oportunidades de Facturación</h2>
-          <p style="color:var(--muted);font-size:13px">Claude escanea sell-out, inventarios, competencia y bitácoras 24/7 · tú decides qué convertir en factura</p>
+      <div class="mb-3">
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">Ampliar Vectorización</h2>
+        <p id="op-vec-sub" style="color:var(--muted);font-size:13px">SKUs con ponderada ≥ 80% — productos que rotan bien donde están y vale la pena pedir ampliación de presencia.</p>
+      </div>
+      <!-- KPIs Vectorización -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">SKUs candidatos</div>
+          <div id="op-vec-skus" style="color:var(--white);font-size:24px;font-weight:700;margin-top:4px">—</div>
         </div>
-        <div style="color:var(--accent);font-size:13px;font-weight:600;text-align:right">ÚLTIMA REVISIÓN<br><span style="color:var(--gold)">hace 5 min</span></div>
-      </div>
-      <!-- Botones -->
-      <div style="display:flex;gap:12px;margin-bottom:20px">
-        <button style="flex:1;background:var(--accent);color:var(--navy);padding:12px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer">📊 Reposición · hoja Excel editable</button>
-        <button style="flex:1;background:transparent;color:var(--gold);padding:12px;border-radius:10px;border:1px solid rgba(201,168,76,0.3);font-size:14px;font-weight:600;cursor:pointer">💡 Estratégicas · detectadas por Claude</button>
-      </div>
-      <!-- KPIs -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
-        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">SKUs Listados</div><div style="color:var(--white);font-size:28px;font-weight:700;margin-top:4px">24</div></div>
-        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">🚨 Déficit Crítico</div><div style="color:#f87171;font-size:28px;font-weight:700;margin-top:4px">3</div></div>
-        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">⚠️ Déficit Moderado</div><div style="color:var(--accent);font-size:28px;font-weight:700;margin-top:4px">14</div></div>
-        <div class="card" style="padding:16px"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Oportunidad $ Total</div><div style="color:var(--gold);font-size:28px;font-weight:700;margin-top:4px">$8.7M</div></div>
-      </div>
-      <!-- Filtros -->
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
-        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Todos los clientes</option><option>Difare</option><option>Favorita</option><option>Rosado</option><option>Tía</option><option>Coral</option><option>Megasantamaria</option><option>Atimasa</option></select>
-        <select style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px"><option>Todas las marcas</option><option>Cicatricure</option><option>Medicasp</option><option>Suerox</option><option>Tío Nacho</option></select>
-        <div style="display:flex;gap:4px;margin-left:8px">
-          <button style="background:var(--accent);color:var(--navy);padding:6px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer">Con déficit</button>
-          <button style="background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;border:1px solid var(--border);font-size:12px;cursor:pointer">🚨 Crítico</button>
-          <button style="background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;border:1px solid var(--border);font-size:12px;cursor:pointer">Todos</button>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">$ Uplift potencial</div>
+          <div id="op-vec-uplift" style="color:var(--gold);font-size:24px;font-weight:700;margin-top:4px">—</div>
+          <div style="color:var(--muted);font-size:10px;margin-top:2px">Si presencia llegara al universo</div>
+        </div>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">Mes referencia</div>
+          <div id="op-vec-mes" style="color:var(--white);font-size:18px;font-weight:600;margin-top:4px">—</div>
+          <div id="op-vec-mes-actual" style="color:var(--muted);font-size:10px;margin-top:2px">—</div>
         </div>
       </div>
-      <!-- Tabla -->
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="border-bottom:1px solid var(--border)">
-            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">Cliente</th>
-            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">Marca</th>
-            <th style="padding:10px 8px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase">SKU</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Tiene</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">En Tránsito</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Debería</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Gap</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">$ Unit</th>
-            <th style="padding:10px 8px;text-align:center;color:var(--muted);font-size:11px;text-transform:uppercase">Proponer OC (U)</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Valor $</th>
-            <th style="padding:10px 8px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase">Cobertura</th>
-          </tr></thead>
-          <tbody>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Difare</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-GLD-50<br><span style="color:var(--muted);font-size:11px">Cicatricure Gold Lift 50ml</span></td><td style="text-align:right;color:var(--white)">2,840</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">9,200</td><td style="text-align:right;color:#f87171;font-weight:700">-6,360</td><td style="text-align:right;color:var(--white)">$412</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">6360</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$2.6M</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Favorita</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">MEDICASP</span></td><td style="color:var(--white)">MED-SH-200<br><span style="color:var(--muted);font-size:11px">Medicasp Shampoo 200ml</span></td><td style="text-align:right;color:var(--white)">1,520</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">4,800</td><td style="text-align:right;color:#f87171;font-weight:700">-3,280</td><td style="text-align:right;color:var(--white)">$185</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">3280</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$607K</td><td style="text-align:right;color:var(--muted)">10d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Tía</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">TÍO NACHO</span></td><td style="color:var(--white)">TN-415-ANT<br><span style="color:var(--muted);font-size:11px">Tío Nacho Anti-caída 415ml</span></td><td style="text-align:right;color:var(--white)">4,100</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">10,500</td><td style="text-align:right;color:#f87171;font-weight:700">-6,400</td><td style="text-align:right;color:var(--white)">$118</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">6400</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$755K</td><td style="text-align:right;color:var(--muted)">12d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Rosado</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-GEL-60<br><span style="color:var(--muted);font-size:11px">Cicatricure Gel Pro 60ml</span></td><td style="text-align:right;color:var(--white)">980</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">3,400</td><td style="text-align:right;color:#f87171;font-weight:700">-2,420</td><td style="text-align:right;color:var(--white)">$189</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">2420</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$457K</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Coral</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">SUEROX</span></td><td style="color:var(--white)">SUE-600-NJ<br><span style="color:var(--muted);font-size:11px">Suerox Naranja 600ml</span></td><td style="text-align:right;color:var(--white)">6,200</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">12,000</td><td style="text-align:right;color:#f87171;font-weight:700">-5,800</td><td style="text-align:right;color:var(--white)">$78</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">5800</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$452K</td><td style="text-align:right;color:var(--muted)">15d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Megasantamaria</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">TÍO NACHO</span></td><td style="color:var(--white)">TN-415-BRI<br><span style="color:var(--muted);font-size:11px">Tío Nacho Brillo 415ml</span></td><td style="text-align:right;color:var(--white)">3,150</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">8,900</td><td style="text-align:right;color:#f87171;font-weight:700">-5,750</td><td style="text-align:right;color:var(--white)">$118</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">5750</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$679K</td><td style="text-align:right;color:var(--muted)">11d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Atimasa</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">CICATRICURE</span></td><td style="color:var(--white)">CIC-CIC-30<br><span style="color:var(--muted);font-size:11px">Cicatricure Crema 30g</span></td><td style="text-align:right;color:var(--white)">1,200</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">4,100</td><td style="text-align:right;color:#f87171;font-weight:700">-2,900</td><td style="text-align:right;color:var(--white)">$295</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">2900</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$856K</td><td style="text-align:right;color:var(--muted)">9d</td></tr>
-            <tr style="border-bottom:1px solid rgba(46,117,182,0.1)"><td style="padding:10px 8px;color:var(--white)">Difare</td><td><span style="color:var(--accent);font-weight:600;font-size:12px">MEDICASP</span></td><td style="color:var(--white)">MED-SH-130<br><span style="color:var(--muted);font-size:11px">Medicasp Shampoo 130ml</span></td><td style="text-align:right;color:var(--white)">2,400</td><td style="text-align:right;color:var(--muted)">—</td><td style="text-align:right;color:var(--white)">5,600</td><td style="text-align:right;color:#f87171;font-weight:700">-3,200</td><td style="text-align:right;color:var(--white)">$145</td><td style="text-align:center"><span style="background:rgba(201,168,76,0.12);color:var(--gold);padding:4px 12px;border-radius:6px;font-weight:600">3200</span></td><td style="text-align:right;color:var(--gold);font-weight:700">$464K</td><td style="text-align:right;color:var(--muted)">13d</td></tr>
-          </tbody>
+      <div class="overflow-auto" style="max-height:520px">
+        <table class="w-full text-xs dash-table" id="op-vec-table">
+          <thead style="background:var(--blue);color:var(--gold)">
+            <tr>
+              <th class="text-left px-2 py-2">Marca</th>
+              <th class="text-left px-2 py-2">Producto</th>
+              <th class="text-right px-2 py-2">Venta</th>
+              <th class="text-center px-2 py-2">Universo</th>
+              <th class="text-center px-2 py-2">Presencia</th>
+              <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2" title="PDVs con venta en último mes completo">#PDV<br>con Venta</th>
+              <th class="text-center px-2 py-2">%Pon</th>
+              <th class="text-center px-2 py-2" title="PDVs con venta proyectados al cierre del mes en curso">PDV mes<br>actual (proy)</th>
+              <th class="text-center px-2 py-2" title="Variación proyectada vs último mes completo">Tend %</th>
+              <th class="text-right px-2 py-2" style="color:#10b981" title="Venta estimada si presencia = universo">$ Potencial</th>
+              <th class="text-right px-2 py-2" style="color:#10b981">$ Uplift</th>
+            </tr>
+          </thead>
+          <tbody id="op-vec-body"><tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── Sección D: Venta Perdida por baja cobertura ── -->
+    <section class="card p-6 mt-6">
+      <div class="mb-3">
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">Venta Perdida por Cobertura</h2>
+        <p style="color:var(--muted);font-size:13px">Estimación de venta que dejas sobre la mesa por NO estar en más PDVs. Cálculo: <span style="color:var(--white)">venta promedio por PDV × PDVs faltantes</span> (escenario optimista).</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">SKUs con gap</div>
+          <div id="op-vp-skus" style="color:var(--white);font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">$ Venta perdida (top)</div>
+          <div id="op-vp-total" style="color:#ef4444;font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">Venta actual (top)</div>
+          <div id="op-vp-venta" style="color:var(--white);font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">% perdida vs actual</div>
+          <div id="op-vp-pct" style="color:var(--accent);font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+      </div>
+      <div class="overflow-auto" style="max-height:520px">
+        <table class="w-full text-xs dash-table" id="op-vp-table">
+          <thead style="background:var(--blue);color:var(--gold)">
+            <tr>
+              <th class="text-left px-2 py-2">Marca</th>
+              <th class="text-left px-2 py-2">Producto</th>
+              <th class="text-right px-2 py-2">Venta actual</th>
+              <th class="text-center px-2 py-2">Universo</th>
+              <th class="text-center px-2 py-2">Presencia</th>
+              <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2">PDV faltantes</th>
+              <th class="text-right px-2 py-2">$/PDV (prom)</th>
+              <th class="text-right px-2 py-2" style="color:#ef4444">$ Venta perdida est.</th>
+            </tr>
+          </thead>
+          <tbody id="op-vp-body"><tr><td colspan="9" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -1298,17 +1328,10 @@ document.getElementById("rolBadge").textContent=RL==="admin"?"Admin":"Gerencial"
 
 const AH={"Content-Type":"application/json","Authorization":"Bearer "+TK};
 
-// ── Auto-logout por inactividad (5 minutos) ──
-let _inactTimer;
-function _resetInact(){
-  clearTimeout(_inactTimer);
-  _inactTimer=setTimeout(()=>{
-    alert("Sesión cerrada por inactividad.");
-    logout();
-  },10*60*1000);
-}
-["click","mousemove","keydown","scroll","touchstart"].forEach(e=>document.addEventListener(e,_resetInact,{passive:true}));
-_resetInact();
+// (Removido) Auto-logout por inactividad. Antes cerraba sesión a los 10
+// minutos sin clicks/mouse, lo que era muy agresivo para revisiones de
+// negocio donde la pestaña queda abierta. Ahora la sesión la controla 100%
+// el JWT (8h base + auto-renovación cada vez que hay actividad de API).
 
 // Dark theme global para Chart.js
 Chart.defaults.color="#7a8fbb";
@@ -1330,6 +1353,7 @@ function showModule(id){
   // Trigger lazy-load de módulos no cargados al inicio
   if(id==='visibilidad' && !window._visLoaded){cargarVisibilidad();window._visLoaded=true;}
   if(id==='tienda-perfecta' && !window._tpLoaded){cargarTP();cargarDist();window._tpLoaded=true;window._distLoaded=true;}
+  if(id==='oportunidades' && !window._opLoaded){cargarOportunidades();window._opLoaded=true;}
   if(id==='campo'){
     const ifr=document.getElementById('campo-iframe');
     if(ifr && (!ifr.src || ifr.src==='about:blank' || ifr.getAttribute('src')==='about:blank')){
@@ -2020,6 +2044,86 @@ async function cargarTP(){
       </tr>`;
     }).join("");
   }catch(e){clearInterval(progTimer);mostrarError(e.message||e);}
+}
+
+// ── Oportunidades — Vectorización + Venta Perdida ──
+async function cargarOportunidades(){
+  cargarOpVectorizacion();
+  cargarOpVentaPerdida();
+}
+async function cargarOpVectorizacion(){
+  try{
+    const d=await api("/api/oportunidades/vectorizacion?min_pon=80&top_n=100",90000);
+    if(!d || d.error){
+      document.getElementById("op-vec-body").innerHTML=`<tr><td colspan="12" class="text-center py-6" style="color:#ef4444">${(d&&d.error)||"Error al cargar"}</td></tr>`;
+      return;
+    }
+    const items=d.items||[]; const r=d.resumen||{};
+    document.getElementById("op-vec-skus").textContent=r.total_skus||0;
+    document.getElementById("op-vec-uplift").textContent=fmtUSD(r.total_uplift||0);
+    document.getElementById("op-vec-mes").textContent=r.mes_completo||"—";
+    if(r.mes_actual_parcial){
+      document.getElementById("op-vec-mes-actual").textContent=`Mes en curso: ${r.mes_actual_parcial} (día ${r.dias_corridos_mes_actual||0}/${r.dias_total_mes_actual||30})`;
+    }else{
+      document.getElementById("op-vec-mes-actual").textContent="Sin datos del mes en curso";
+    }
+    const body=document.getElementById("op-vec-body");
+    if(!items.length){body.innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">No hay SKUs con %Pon ≥ 80%</td></tr>';return;}
+    body.innerHTML=items.map(x=>{
+      const cob=x.cobertura_pct||0, pon=x.ponderada_pct||0;
+      const tend=x.tendencia_pct;
+      const tendCol = tend===null?'var(--muted)':(tend>=0?'#10b981':'#ef4444');
+      const tendTxt = tend===null?'—':(tend>0?'+':'')+tend+'%';
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td class="px-2 py-1.5" style="color:var(--gold)">${x.MARCA||"—"}</td>
+        <td class="px-2 py-1.5" style="color:var(--white)" title="${(x.PRODUCTO||"").replace(/"/g,'&quot;')}">${x.PRODUCTO||"—"}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(x.VENTA)}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.UNIVERSO_PDV||0}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_PRESENCIA||0}</td>
+        <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_VENTA_ULT_MES||0}</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:${pon>=80?'#10b981':'#f59e0b'}">${pon}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.PDV_VENTA_ACTUAL_PROY||0}</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:${tendCol}">${tendTxt}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--white)">${fmtUSD(x.VENTA_POTENCIAL)}</td>
+        <td class="px-2 py-1.5 text-right font-bold" style="color:#10b981">${fmtUSD(x.UPLIFT)}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){
+    document.getElementById("op-vec-body").innerHTML=`<tr><td colspan="12" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;
+  }
+}
+async function cargarOpVentaPerdida(){
+  try{
+    const d=await api("/api/oportunidades/venta-perdida?top_n=50",90000);
+    if(!d || d.error){
+      document.getElementById("op-vp-body").innerHTML=`<tr><td colspan="9" class="text-center py-6" style="color:#ef4444">${(d&&d.error)||"Error al cargar"}</td></tr>`;
+      return;
+    }
+    const items=d.items||[]; const r=d.resumen||{};
+    document.getElementById("op-vp-skus").textContent=r.total_skus||0;
+    document.getElementById("op-vp-total").textContent=fmtUSD(r.total_venta_perdida||0);
+    document.getElementById("op-vp-venta").textContent=fmtUSD(r.total_venta_actual||0);
+    document.getElementById("op-vp-pct").textContent=(r.pct_perdida_vs_actual||0)+"%";
+    const body=document.getElementById("op-vp-body");
+    if(!items.length){body.innerHTML='<tr><td colspan="9" class="text-center py-6" style="color:var(--muted)">Sin gap de cobertura</td></tr>';return;}
+    body.innerHTML=items.map(x=>{
+      const cob=x.cobertura_pct||0;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td class="px-2 py-1.5" style="color:var(--gold)">${x.MARCA||"—"}</td>
+        <td class="px-2 py-1.5" style="color:var(--white)" title="${(x.PRODUCTO||"").replace(/"/g,'&quot;')}">${x.PRODUCTO||"—"}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(x.VENTA)}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.UNIVERSO_PDV||0}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_PRESENCIA||0}</td>
+        <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${x.PDV_FALTANTES||0}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(x.venta_prom_pdv)}</td>
+        <td class="px-2 py-1.5 text-right font-bold" style="color:#ef4444">${fmtUSD(x.VENTA_PERDIDA_EST)}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){
+    document.getElementById("op-vp-body").innerHTML=`<tr><td colspan="9" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;
+  }
 }
 
 // Plan de Visibilidad InStore — carga

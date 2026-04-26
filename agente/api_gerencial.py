@@ -145,6 +145,46 @@ def filtros():
 
 
 # ══════════════════════════════════════════════════════════════
+# Oportunidades — análisis accionable para el KAM (módulo Oportunidades)
+# ══════════════════════════════════════════════════════════════
+
+@bp.route("/oportunidades/vectorizacion", methods=["GET"])
+def oportunidades_vectorizacion():
+    """Lista SKUs con %Pon ≥ umbral → candidatos a ampliar presencia.
+    Query params:
+      min_pon  → umbral de ponderada % (default 80)
+      top_n    → máx items (default 100)
+    """
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from . import oportunidades as op
+        min_pon = float(request.args.get("min_pon", "80") or 80)
+        top_n = int(request.args.get("top_n", "100") or 100)
+        return jsonify(op.ampliar_vectorizacion(min_pon_pct=min_pon, top_n=top_n)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+@bp.route("/oportunidades/venta-perdida", methods=["GET"])
+def oportunidades_venta_perdida():
+    """Estimación de venta perdida por SKU por baja cobertura.
+    Query params:
+      top_n → máx items (default 50)
+    """
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from . import oportunidades as op
+        top_n = int(request.args.get("top_n", "50") or 50)
+        return jsonify(op.venta_perdida(top_n=top_n)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+# ══════════════════════════════════════════════════════════════
 # 2) Tendencia por marca (pregunta KAM #1)
 # ══════════════════════════════════════════════════════════════
 
