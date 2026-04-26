@@ -635,6 +635,36 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       #chartCanalMes{min-height:200px}
       /* Tabla TP: scroll horizontal */
       .dash-table{font-size:11px!important}
+      /* Filtros TP también vertical */
+      #mod-tienda-perfecta .flex.flex-wrap{flex-direction:column;align-items:stretch;gap:8px}
+      #mod-tienda-perfecta .ms-wrap, #mod-tienda-perfecta select{width:100%!important}
+      #mod-tienda-perfecta #tp-prod-label{width:100%!important}
+      /* Excel button + filtros del Excel */
+      #btn-tp-excel{width:100%;justify-content:center}
+    }
+    /* ── Pantallas muy pequeñas (smartphones) ── */
+    @media(max-width:600px){
+      /* Headings y subtítulos más compactos */
+      .section-title{font-size:.95rem!important;}
+      h2.section-title{font-size:1rem!important;}
+      /* KPIs: 1 columna en pantallas muy pequeñas */
+      #kpis{grid-template-columns:1fr!important;gap:6px!important}
+      .kpi-val{font-size:1.5rem!important}
+      /* DOIS card: stack vertical sin bordes raros */
+      .dois-grid{grid-template-columns:1fr!important;gap:6px}
+      .dois-grid>div{border-right:none!important;border-bottom:1px solid var(--border);padding:10px}
+      .dois-grid>div:last-child{border-bottom:none}
+      /* Tabla TP: columnas sticky más estrechas para que se lean los datos */
+      .dash-table th.sticky-col-1, .dash-table td.sticky-col-1{min-width:60px!important;max-width:80px!important;font-size:10px}
+      .dash-table th.sticky-col-2, .dash-table td.sticky-col-2{min-width:140px!important;max-width:180px!important;left:60px!important;font-size:11px;line-height:1.25}
+      .dash-table th, .dash-table td{padding:5px 6px!important;font-size:10px!important}
+      /* Cards dentro de la app más compactas */
+      .card{padding:14px!important}
+      /* Sidebar más compacto cuando está colapsado */
+      .sidebar{width:50px}
+      .sidebar-item{padding:8px}
+      .sidebar-toggle{font-size:18px;padding:8px}
+      .content-area{margin-left:50px}
     }
     /* ── Sticky columns for TP table ── */
     .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;z-index:2;background:inherit}
@@ -2575,6 +2605,34 @@ html.embedded .content{padding:12px 16px;}
 .send-btn:disabled{opacity:0.4;cursor:not-allowed;}
 .loading{text-align:center;padding:20px;color:var(--muted);font-size:13px;}
 #appScreen{display:none;}
+
+/* ── Mobile responsive (vista campo) ── */
+@media (max-width: 600px) {
+  .header{padding:10px 12px;}
+  .header-left img{width:32px!important;height:32px!important;}
+  .logo-name{font-size:.95rem!important;}
+  .logo-sub{font-size:10px;}
+  .content{padding:10px;}
+  .panel-title{font-size:1rem;}
+  .panel-sub{font-size:11px;margin-bottom:10px;}
+  /* Una sola columna para grupos en pantallas chicas — evita que los nombres
+     largos como "Cruz Azul Autoservicio" se corten visualmente. */
+  .grupos-grid{grid-template-columns:1fr!important;gap:6px;}
+  .grupo-card{padding:12px;}
+  .grupo-nombre{font-size:14px;}
+  .grupo-stats{font-size:11px;}
+  .farm-item{padding:9px 12px;}
+  .farm-nombre{font-size:13px;line-height:1.3;}
+  .farm-venta{font-size:12px;white-space:nowrap;}
+  .btn-back{padding:5px 10px;font-size:11px;}
+  .search-input{font-size:14px;padding:9px 12px 9px 34px;}
+  .login-form{max-width:280px;}
+  .login-input,.login-btn{font-size:14px;padding:11px 14px;}
+}
+@media (max-width: 380px) {
+  .grupo-card{padding:10px;}
+  .grupo-nombre{font-size:13px;}
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
