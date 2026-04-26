@@ -167,18 +167,66 @@ def oportunidades_vectorizacion():
         return jsonify({"error": str(e)[:200]}), 500
 
 
-@bp.route("/oportunidades/venta-perdida", methods=["GET"])
-def oportunidades_venta_perdida():
-    """Estimación de venta perdida por SKU por baja cobertura.
-    Query params:
-      top_n → máx items (default 50)
-    """
+@bp.route("/oportunidades/foco-semana", methods=["GET"])
+def oportunidades_foco_semana():
+    """Top N acciones priorizadas (mezcla AMPLIAR + PUSH + ALERTA)."""
     auth, err = _autorizar()
     if err: return err
     try:
         from . import oportunidades as op
+        top_n = int(request.args.get("top_n", "7") or 7)
+        return jsonify(op.foco_semana(top_n=top_n)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+@bp.route("/oportunidades/aceleradores", methods=["GET"])
+def oportunidades_aceleradores():
+    """SKUs en zona %Pon 60-79% — push para cruzar al 80%."""
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from . import oportunidades as op
+        min_pon = float(request.args.get("min_pon", "60") or 60)
+        max_pon = float(request.args.get("max_pon", "79.9") or 79.9)
         top_n = int(request.args.get("top_n", "50") or 50)
-        return jsonify(op.venta_perdida(top_n=top_n)), 200
+        return jsonify(op.aceleradores_sellout(min_pon=min_pon, max_pon=max_pon, top_n=top_n)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+@bp.route("/oportunidades/alertas", methods=["GET"])
+def oportunidades_alertas():
+    """SKUs con %Pon < umbral (default 60%) — riesgo inventario muerto."""
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from . import oportunidades as op
+        max_pon = float(request.args.get("max_pon", "60") or 60)
+        top_n = int(request.args.get("top_n", "50") or 50)
+        return jsonify(op.alerta_critica(max_pon=max_pon, top_n=top_n)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+@bp.route("/oportunidades/insight-ia", methods=["POST", "OPTIONS"])
+def oportunidades_insight_ia():
+    """Genera plan de acción para un SKU usando Claude IA."""
+    if request.method == "OPTIONS":
+        return "", 204
+    auth, err = _autorizar()
+    if err: return err
+    try:
+        from . import oportunidades as op
+        data = request.json or {}
+        idn = data.get("idneptuno", "")
+        if not idn:
+            return jsonify({"error": "idneptuno requerido"}), 400
+        client = _get_client()
+        return jsonify(op.insight_ia(idn, client)), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)[:200]}), 500

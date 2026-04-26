@@ -1202,8 +1202,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
   <!-- ══════ MÓDULO: Oportunidades — análisis accionable KAM ══════ -->
   <div id="mod-oportunidades" class="module">
-    <!-- ── Sección B: Ampliar Vectorización ── -->
+    <!-- ── Sección A: Foco de la Semana ── -->
     <section class="card p-6">
+      <div class="mb-3">
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:4px">🎯 Foco de la Semana</h2>
+        <p style="color:var(--muted);font-size:13px">Acciones priorizadas por impacto. Mezcla oportunidades de ampliar (verde), empujar (ámbar) y alertas (rojo).</p>
+      </div>
+      <div id="op-foco-list">
+        <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Cargando foco de la semana…</div>
+      </div>
+    </section>
+
+    <!-- ── Sección B: Ampliar Vectorización ── -->
+    <section class="card p-6 mt-6">
       <div class="mb-3">
         <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">Ampliar Vectorización</h2>
         <p id="op-vec-sub" style="color:var(--muted);font-size:13px">SKUs con ponderada ≥ 80% — productos que rotan bien donde están y vale la pena pedir ampliación de presencia.</p>
@@ -1248,52 +1259,89 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
     </section>
 
-    <!-- ── Sección D: Venta Perdida por baja cobertura ── -->
+    <!-- ── Sección C: Aceleradores Sell-Out (zona %Pon 60-79%) ── -->
     <section class="card p-6 mt-6">
       <div class="mb-3">
-        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">Venta Perdida por Cobertura</h2>
-        <p style="color:var(--muted);font-size:13px">Estimación de venta que dejas sobre la mesa por NO estar en más PDVs. Cálculo: <span style="color:var(--white)">venta promedio por PDV × PDVs faltantes</span> (escenario optimista).</p>
+        <h2 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">⚡ Aceleradores Sell-Out</h2>
+        <p style="color:var(--muted);font-size:13px">SKUs con %Pon entre <span style="color:#f59e0b;font-weight:600">60% y 79%</span> — están a "un empujón" del 80% para gatillar ampliación. La columna <strong>Acción</strong> sugiere mecánica concreta según el patrón de DOI/stock.</p>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
         <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
-          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">SKUs con gap</div>
-          <div id="op-vp-skus" style="color:var(--white);font-size:24px;font-weight:700;margin-top:4px">—</div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">SKUs en zona push</div>
+          <div id="op-ace-skus" style="color:var(--accent);font-size:24px;font-weight:700;margin-top:4px">—</div>
         </div>
         <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
-          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">$ Venta perdida (top)</div>
-          <div id="op-vp-total" style="color:#ef4444;font-size:24px;font-weight:700;margin-top:4px">—</div>
-        </div>
-        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
-          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">Venta actual (top)</div>
-          <div id="op-vp-venta" style="color:var(--white);font-size:24px;font-weight:700;margin-top:4px">—</div>
-        </div>
-        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
-          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">% perdida vs actual</div>
-          <div id="op-vp-pct" style="color:var(--accent);font-size:24px;font-weight:700;margin-top:4px">—</div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">Venta acumulada</div>
+          <div id="op-ace-venta" style="color:var(--gold);font-size:24px;font-weight:700;margin-top:4px">—</div>
         </div>
       </div>
       <div class="overflow-auto" style="max-height:520px">
-        <table class="w-full text-xs dash-table" id="op-vp-table">
+        <table class="w-full text-xs dash-table" id="op-ace-table">
           <thead style="background:var(--blue);color:var(--gold)">
             <tr>
               <th class="text-left px-2 py-2">Marca</th>
               <th class="text-left px-2 py-2">Producto</th>
-              <th class="text-right px-2 py-2">Venta actual</th>
-              <th class="text-center px-2 py-2">Universo</th>
-              <th class="text-center px-2 py-2">Presencia</th>
+              <th class="text-right px-2 py-2">Venta</th>
               <th class="text-center px-2 py-2">%Cob</th>
-              <th class="text-center px-2 py-2">PDV faltantes</th>
-              <th class="text-right px-2 py-2">$/PDV (prom)</th>
-              <th class="text-right px-2 py-2" style="color:#ef4444">$ Venta perdida est.</th>
+              <th class="text-center px-2 py-2">%Pon</th>
+              <th class="text-left px-2 py-2" style="min-width:340px">Acción sugerida</th>
+              <th class="text-center px-2 py-2">IA</th>
             </tr>
           </thead>
-          <tbody id="op-vp-body"><tr><td colspan="9" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+          <tbody id="op-ace-body"><tr><td colspan="7" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
+
+    <!-- ── Sección Alertas Críticas (zona %Pon < 60%) ── -->
+    <section class="card p-6 mt-6">
+      <div class="mb-3">
+        <h2 style="color:#ef4444;font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:4px">🚨 Alertas Críticas</h2>
+        <p style="color:var(--muted);font-size:13px">SKUs con %Pon <span style="color:#ef4444;font-weight:600">menor al 60%</span> — el producto NO se está vendiendo donde está. Riesgo alto de inventario muerto.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">SKUs en alerta</div>
+          <div id="op-ale-skus" style="color:#ef4444;font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+        <div class="card" style="padding:14px;background:var(--card2);border:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase">Venta acumulada</div>
+          <div id="op-ale-venta" style="color:var(--gold);font-size:24px;font-weight:700;margin-top:4px">—</div>
+        </div>
+      </div>
+      <div class="overflow-auto" style="max-height:520px">
+        <table class="w-full text-xs dash-table" id="op-ale-table">
+          <thead style="background:var(--blue);color:var(--gold)">
+            <tr>
+              <th class="text-left px-2 py-2">Marca</th>
+              <th class="text-left px-2 py-2">Producto</th>
+              <th class="text-right px-2 py-2">Venta</th>
+              <th class="text-center px-2 py-2">%Cob</th>
+              <th class="text-center px-2 py-2">%Pon</th>
+              <th class="text-center px-2 py-2" style="color:#ef4444">DOI&gt;60</th>
+              <th class="text-left px-2 py-2" style="min-width:340px">Acción sugerida</th>
+              <th class="text-center px-2 py-2">IA</th>
+            </tr>
+          </thead>
+          <tbody id="op-ale-body"><tr><td colspan="8" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Modal Insight IA -->
+    <div id="op-ia-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(8,15,32,0.85);align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--card);border:1px solid var(--gold);border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow-y:auto;padding:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="color:var(--gold);font-family:'Playfair Display',serif;font-size:18px;margin:0">🤖 Plan de acción · IA</h3>
+          <button onclick="document.getElementById('op-ia-modal').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+        </div>
+        <div id="op-ia-sku" style="color:var(--white);font-size:14px;font-weight:600;margin-bottom:12px"></div>
+        <div id="op-ia-body" style="color:var(--white);font-size:14px;line-height:1.6;white-space:pre-wrap">Generando recomendación…</div>
+      </div>
+    </div>
   </div>
 
-  <!-- ══════ MÓDULO: Configuración (Placeholder) ══════ -->
+    <!-- ══════ MÓDULO: Configuración (Placeholder) ══════ -->
   <div id="mod-configuracion" class="module">
     <section class="card p-6">
       <div style="text-align:center;padding:60px 20px">
@@ -2046,10 +2094,41 @@ async function cargarTP(){
   }catch(e){clearInterval(progTimer);mostrarError(e.message||e);}
 }
 
-// ── Oportunidades — Vectorización + Venta Perdida ──
+// ── Oportunidades — Foco semana + Vectorización + Aceleradores + Alertas ──
 async function cargarOportunidades(){
+  cargarOpFoco();
   cargarOpVectorizacion();
-  cargarOpVentaPerdida();
+  cargarOpAceleradores();
+  cargarOpAlertas();
+}
+
+async function cargarOpFoco(){
+  const cont=document.getElementById("op-foco-list");
+  try{
+    const d=await api("/api/oportunidades/foco-semana?top_n=7",90000);
+    if(!d||d.error){cont.innerHTML=`<div style="color:#ef4444;text-align:center;padding:20px">${(d&&d.error)||"Error"}</div>`;return;}
+    const items=d.items||[];
+    if(!items.length){cont.innerHTML='<div style="color:var(--muted);text-align:center;padding:20px">Sin acciones priorizadas con la data actual.</div>';return;}
+    cont.innerHTML=items.map((x,idx)=>{
+      return `<div style="display:flex;gap:14px;padding:14px;border-left:4px solid ${x.color};background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:8px;align-items:flex-start">
+        <div style="font-size:22px;line-height:1">${x.icono}</div>
+        <div style="flex:1">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+            <span style="background:${x.color};color:var(--navy);font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;letter-spacing:.5px">${x.categoria}</span>
+            <span style="color:var(--gold);font-weight:600;font-size:13px">${x.MARCA}</span>
+            <span style="color:var(--muted);font-size:12px">·</span>
+            <span style="color:var(--white);font-size:13px">${x.PRODUCTO}</span>
+          </div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:4px">${x.metrica_clave}</div>
+          <div style="color:var(--white);font-size:13px;line-height:1.4">${x.accion}</div>
+        </div>
+        <div style="text-align:right;min-width:90px">
+          <div style="color:${x.color};font-size:16px;font-weight:700">${fmtUSD(x.impacto_usd)}</div>
+          <button onclick="opPedirIA('${x.IDNEPTUNO}','${(x.MARCA||'').replace(/'/g,"\\'")} - ${(x.PRODUCTO||'').replace(/'/g,"\\'")}')" style="background:none;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;margin-top:6px">🤖 IA</button>
+        </div>
+      </div>`;
+    }).join("");
+  }catch(e){cont.innerHTML=`<div style="color:#ef4444;text-align:center;padding:20px">${e.message||e}</div>`;}
 }
 async function cargarOpVectorizacion(){
   try{
@@ -2093,37 +2172,72 @@ async function cargarOpVectorizacion(){
     document.getElementById("op-vec-body").innerHTML=`<tr><td colspan="12" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;
   }
 }
-async function cargarOpVentaPerdida(){
+async function cargarOpAceleradores(){
   try{
-    const d=await api("/api/oportunidades/venta-perdida?top_n=50",90000);
-    if(!d || d.error){
-      document.getElementById("op-vp-body").innerHTML=`<tr><td colspan="9" class="text-center py-6" style="color:#ef4444">${(d&&d.error)||"Error al cargar"}</td></tr>`;
-      return;
-    }
-    const items=d.items||[]; const r=d.resumen||{};
-    document.getElementById("op-vp-skus").textContent=r.total_skus||0;
-    document.getElementById("op-vp-total").textContent=fmtUSD(r.total_venta_perdida||0);
-    document.getElementById("op-vp-venta").textContent=fmtUSD(r.total_venta_actual||0);
-    document.getElementById("op-vp-pct").textContent=(r.pct_perdida_vs_actual||0)+"%";
-    const body=document.getElementById("op-vp-body");
-    if(!items.length){body.innerHTML='<tr><td colspan="9" class="text-center py-6" style="color:var(--muted)">Sin gap de cobertura</td></tr>';return;}
+    const d=await api("/api/oportunidades/aceleradores?min_pon=60&max_pon=79.9&top_n=50",90000);
+    if(!d||d.error){document.getElementById("op-ace-body").innerHTML=`<tr><td colspan="7" class="text-center py-6" style="color:#ef4444">${(d&&d.error)||"Error"}</td></tr>`;return;}
+    const items=d.items||[];
+    document.getElementById("op-ace-skus").textContent=(d.resumen||{}).total_skus||0;
+    const totalV=items.reduce((s,x)=>s+(x.VENTA||0),0);
+    document.getElementById("op-ace-venta").textContent=fmtUSD(totalV);
+    const body=document.getElementById("op-ace-body");
+    if(!items.length){body.innerHTML='<tr><td colspan="7" class="text-center py-6" style="color:var(--muted)">No hay SKUs en zona 60-79%</td></tr>';return;}
     body.innerHTML=items.map(x=>{
-      const cob=x.cobertura_pct||0;
+      const r=x.regla||{};
+      const sku=`${(x.MARCA||'').replace(/'/g,"\\'")} - ${(x.PRODUCTO||'').replace(/'/g,"\\'")}`;
       return `<tr style="border-bottom:1px solid var(--border)">
         <td class="px-2 py-1.5" style="color:var(--gold)">${x.MARCA||"—"}</td>
         <td class="px-2 py-1.5" style="color:var(--white)" title="${(x.PRODUCTO||"").replace(/"/g,'&quot;')}">${x.PRODUCTO||"—"}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(x.VENTA)}</td>
-        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.UNIVERSO_PDV||0}</td>
-        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_PRESENCIA||0}</td>
-        <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
-        <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${x.PDV_FALTANTES||0}</td>
-        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(x.venta_prom_pdv)}</td>
-        <td class="px-2 py-1.5 text-right font-bold" style="color:#ef4444">${fmtUSD(x.VENTA_PERDIDA_EST)}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.cobertura_pct}%</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#f59e0b">${x.ponderada_pct}%</td>
+        <td class="px-2 py-1.5" style="color:var(--white);font-size:11px;line-height:1.4"><span style="background:${r.color||'#3b82f6'};color:var(--navy);font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;margin-right:6px">${r.icono||""} ${r.tipo||""}</span>${r.accion||""}</td>
+        <td class="px-2 py-1.5 text-center"><button onclick="opPedirIA('${x.IDNEPTUNO}','${sku}')" style="background:none;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer">🤖</button></td>
       </tr>`;
     }).join("");
-  }catch(e){
-    document.getElementById("op-vp-body").innerHTML=`<tr><td colspan="9" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;
-  }
+  }catch(e){document.getElementById("op-ace-body").innerHTML=`<tr><td colspan="7" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;}
+}
+
+async function cargarOpAlertas(){
+  try{
+    const d=await api("/api/oportunidades/alertas?max_pon=60&top_n=50",90000);
+    if(!d||d.error){document.getElementById("op-ale-body").innerHTML=`<tr><td colspan="8" class="text-center py-6" style="color:#ef4444">${(d&&d.error)||"Error"}</td></tr>`;return;}
+    const items=d.items||[];
+    document.getElementById("op-ale-skus").textContent=(d.resumen||{}).total_skus||0;
+    const totalV=items.reduce((s,x)=>s+(x.VENTA||0),0);
+    document.getElementById("op-ale-venta").textContent=fmtUSD(totalV);
+    const body=document.getElementById("op-ale-body");
+    if(!items.length){body.innerHTML='<tr><td colspan="8" class="text-center py-6" style="color:#10b981">Sin alertas críticas — ningún SKU está bajo 60% Pon. ✓</td></tr>';return;}
+    body.innerHTML=items.map(x=>{
+      const r=x.regla||{};
+      const sku=`${(x.MARCA||'').replace(/'/g,"\\'")} - ${(x.PRODUCTO||'').replace(/'/g,"\\'")}`;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td class="px-2 py-1.5" style="color:var(--gold)">${x.MARCA||"—"}</td>
+        <td class="px-2 py-1.5" style="color:var(--white)" title="${(x.PRODUCTO||"").replace(/"/g,'&quot;')}">${x.PRODUCTO||"—"}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(x.VENTA)}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.cobertura_pct}%</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${x.ponderada_pct}%</td>
+        <td class="px-2 py-1.5 text-center" style="color:#ef4444">${x.DOI_GT60||0}</td>
+        <td class="px-2 py-1.5" style="color:var(--white);font-size:11px;line-height:1.4"><span style="background:${r.color||'#dc2626'};color:var(--navy);font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;margin-right:6px">${r.icono||""} ${r.tipo||""}</span>${r.accion||""}</td>
+        <td class="px-2 py-1.5 text-center"><button onclick="opPedirIA('${x.IDNEPTUNO}','${sku}')" style="background:none;border:1px solid var(--gold);color:var(--gold);font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer">🤖</button></td>
+      </tr>`;
+    }).join("");
+  }catch(e){document.getElementById("op-ale-body").innerHTML=`<tr><td colspan="8" class="text-center py-6" style="color:#ef4444">${e.message||e}</td></tr>`;}
+}
+
+async function opPedirIA(idn, sku){
+  const modal=document.getElementById("op-ia-modal");
+  document.getElementById("op-ia-sku").textContent=sku;
+  document.getElementById("op-ia-body").textContent="Generando recomendación con Claude…";
+  modal.style.display="flex";
+  try{
+    const r=await fetch(S+"/api/oportunidades/insight-ia",{method:"POST",headers:AH,body:JSON.stringify({idneptuno:idn})});
+    _maybeRenovarToken(r);
+    if(r.status===401){logout();return;}
+    const d=await r.json();
+    if(d.error){document.getElementById("op-ia-body").textContent="❌ "+d.error;return;}
+    document.getElementById("op-ia-body").textContent=d.recomendacion||"Sin recomendación.";
+  }catch(e){document.getElementById("op-ia-body").textContent="Error: "+(e.message||e);}
 }
 
 // Plan de Visibilidad InStore — carga

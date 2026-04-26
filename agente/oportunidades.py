@@ -191,59 +191,314 @@ def ampliar_vectorizacion(min_pon_pct: float = 80.0,
     }
 
 
-# ── 2) Venta Perdida por baja cobertura ──────────────────────────
+# ── 2) Aceleradores Sell-Out (zona %Pon 60-79%) ──────────────────
+# Lógica de negocio (input KAM):
+#   ≥ 80%  → cliente aprueba ampliar vectorización (sección B)
+#   60-79% → "casi ahí" — push sell-out para cruzar al 80%
+#   < 60%  → ALERTA: producto no rota, riesgo de inventario muerto
 
-def venta_perdida(top_n: int = 50) -> dict:
-    """Estimación de venta perdida por NO estar en más PDVs.
+def _enriquecer(r: dict) -> dict:
+    """Añade ponderada_pct, cobertura_pct, doi_distrib%, presencia stock."""
+    venta = float(r.get("VENTA", 0) or 0)
+    presencia = int(r.get("PDV_PRESENCIA", 0) or 0)
+    universo = int(r.get("UNIVERSO_PDV", 0) or 0) or 1
+    pdv_v_ult = int(r.get("PDV_VENTA_ULT_MES", 0) or 0)
+    cob = round(presencia / universo * 100, 1)
+    pon = round(pdv_v_ult / presencia * 100, 1) if presencia > 0 else 0.0
+    # DOI distribution as % of presencia
+    le20 = int(r.get("DOI_LE20", 0) or 0)
+    d20_30 = int(r.get("DOI_20_30", 0) or 0)
+    d30_60 = int(r.get("DOI_30_60", 0) or 0)
+    gt60 = int(r.get("DOI_GT60", 0) or 0)
+    stock_0 = int(r.get("STOCK_0", 0) or 0)
+    return {
+        **r,
+        "venta": venta,
+        "presencia": presencia,
+        "universo": universo,
+        "cobertura_pct": cob,
+        "ponderada_pct": pon,
+        "pdv_venta_ult_mes": pdv_v_ult,
+        "doi_le20": le20,
+        "doi_20_30": d20_30,
+        "doi_30_60": d30_60,
+        "doi_gt60": gt60,
+        "stock_eq0": stock_0,
+    }
 
-    Para cada SKU:
-      venta_prom_PDV    = venta_total / pdv_presencia
-      pdvs_faltantes    = universo_pdv - pdv_presencia
-      venta_perdida_$   = venta_prom_PDV × pdvs_faltantes  (escenario optimista)
 
-    Filtros: solo SKUs con presencia > 0 y pdvs_faltantes > 0.
-    """
+def _regla_acelerador(item: dict) -> dict:
+    """Regla determinista para sugerir acción de sell-out (zona 60-79%)."""
+    presencia = max(item["presencia"], 1)
+    pct_gt60 = item["doi_gt60"] / presencia * 100
+    pct_30_60 = item["doi_30_60"] / presencia * 100
+    pct_le20 = item["doi_le20"] / presencia * 100
+    pct_stock0 = item["stock_eq0"] / presencia * 100
+
+    if pct_stock0 >= 25:
+        return {
+            "tipo": "REPOSICIÓN",
+            "color": "#ef4444",
+            "icono": "📦",
+            "accion": f"Reposición urgente — {item['stock_eq0']} PDVs en quiebre ({round(pct_stock0)}% de la presencia).",
+        }
+    if pct_gt60 >= 30:
+        return {
+            "tipo": "COMBO/DESCUENTO",
+            "color": "#f59e0b",
+            "icono": "🎁",
+            "accion": f"Activar combo cruzado o descuento factura 10-15% — {item['doi_gt60']} PDVs con DOI >60d ({round(pct_gt60)}%).",
+        }
+    if pct_30_60 >= 30:
+        return {
+            "tipo": "PUSH PROMOTOR",
+            "color": "#3b82f6",
+            "icono": "👥",
+            "accion": f"Push promotor en PDVs sin venta últimos 15 días — {item['doi_30_60']} PDVs con DOI 30-60d.",
+        }
+    if pct_le20 >= 50:
+        return {
+            "tipo": "MATERIAL POP",
+            "color": "#10b981",
+            "icono": "📌",
+            "accion": f"Producto rotando bien — material POP + capacitación en top PDVs (DOI ≤20 en {round(pct_le20)}% de presencia).",
+        }
+    return {
+        "tipo": "ACTIVAR PDVs",
+        "color": "#8b5cf6",
+        "icono": "🎯",
+        "accion": "Activar mecánicas en PDVs sin rotación reciente para llevar %Pon a 80%.",
+    }
+
+
+def _regla_alerta(item: dict) -> dict:
+    """Regla determinista para zona <60% Pon (riesgo inventario)."""
+    presencia = max(item["presencia"], 1)
+    pct_gt60 = item["doi_gt60"] / presencia * 100
+    pct_30_60 = item["doi_30_60"] / presencia * 100
+    if pct_gt60 >= 40:
+        return {
+            "tipo": "STOCK MUERTO",
+            "color": "#dc2626",
+            "icono": "🚨",
+            "accion": f"Liquidación o reasignación urgente — {item['doi_gt60']} PDVs con DOI >60d ({round(pct_gt60)}%). Considerar mover stock a PDVs de marcas con %Pon alto.",
+        }
+    if presencia > item["pdv_venta_ult_mes"] * 2 and presencia >= 50:
+        return {
+            "tipo": "REDUCIR PRESENCIA",
+            "color": "#f59e0b",
+            "icono": "📉",
+            "accion": f"Reducir presencia: solo {item['pdv_venta_ult_mes']}/{presencia} PDVs lo venden. El producto no acepta mercado en muchos PDVs.",
+        }
+    if pct_30_60 + pct_gt60 >= 50:
+        return {
+            "tipo": "REVISAR ROTACIÓN",
+            "color": "#f59e0b",
+            "icono": "⚠️",
+            "accion": "Revisar rotación: más del 50% de PDVs tiene DOI >30d. Validar visibilidad y precio vs competencia.",
+        }
+    return {
+        "tipo": "ANALIZAR CAUSA",
+        "color": "#6b7280",
+        "icono": "🔍",
+        "accion": "Analizar causa: producto con baja %Pon pero sin patrón claro de stock. Revisar competencia, exhibición, lifecycle.",
+    }
+
+
+def aceleradores_sellout(min_pon: float = 60.0,
+                          max_pon: float = 79.9,
+                          top_n: int = 50) -> dict:
+    """SKUs en zona %Pon `min_pon`-`max_pon` con sugerencia de acción de sell-out."""
     rows_raw = analitica.oportunidad_vectorizacion()
     if not rows_raw:
         return {"items": [], "resumen": {}}
-
     items = []
     for r in rows_raw:
-        venta = float(r.get("VENTA", 0) or 0)
-        presencia = int(r.get("PDV_PRESENCIA", 0) or 0)
-        universo = int(r.get("UNIVERSO_PDV", 0) or 0)
-        if presencia <= 0 or universo <= 0:
+        e = _enriquecer(r)
+        if e["presencia"] <= 0:
             continue
-        faltantes = universo - presencia
-        if faltantes <= 0:
+        if not (min_pon <= e["ponderada_pct"] <= max_pon):
             continue
-        venta_prom_pdv = venta / presencia
-        venta_perdida_est = venta_prom_pdv * faltantes
-        cob_pct = round(presencia / universo * 100, 1)
+        regla = _regla_acelerador(e)
         items.append({
-            "IDNEPTUNO": r.get("IDNEPTUNO", ""),
-            "MARCA": r.get("MARCA", ""),
-            "PRODUCTO": r.get("PRODUCTO", ""),
-            "VENTA": round(venta, 0),
-            "UNIVERSO_PDV": universo,
-            "PDV_PRESENCIA": presencia,
-            "PDV_FALTANTES": faltantes,
-            "cobertura_pct": cob_pct,
-            "venta_prom_pdv": round(venta_prom_pdv, 2),
-            "VENTA_PERDIDA_EST": round(venta_perdida_est, 0),
+            "IDNEPTUNO": e.get("IDNEPTUNO", ""),
+            "MARCA": e.get("MARCA", ""),
+            "PRODUCTO": e.get("PRODUCTO", ""),
+            "VENTA": round(e["venta"], 0),
+            "UNIVERSO_PDV": e["universo"],
+            "PDV_PRESENCIA": e["presencia"],
+            "PDV_VENTA_ULT_MES": e["pdv_venta_ult_mes"],
+            "cobertura_pct": e["cobertura_pct"],
+            "ponderada_pct": e["ponderada_pct"],
+            "DOI_GT60": e["doi_gt60"],
+            "DOI_30_60": e["doi_30_60"],
+            "STOCK_0": e["stock_eq0"],
+            "regla": regla,
         })
-
-    items.sort(key=lambda x: x["VENTA_PERDIDA_EST"], reverse=True)
-    items = items[:top_n]
-    total_perdida = sum(i["VENTA_PERDIDA_EST"] for i in items)
-    total_venta = sum(i["VENTA"] for i in items)
-    pct_perdida_vs_venta = round((total_perdida / total_venta * 100), 1) if total_venta > 0 else 0
+    items.sort(key=lambda x: x["VENTA"], reverse=True)
     return {
-        "items": items,
+        "items": items[:top_n],
         "resumen": {
             "total_skus": len(items),
-            "total_venta_perdida": round(total_perdida, 0),
-            "total_venta_actual": round(total_venta, 0),
-            "pct_perdida_vs_actual": pct_perdida_vs_venta,
+            "rango_pon": [min_pon, max_pon],
         },
     }
+
+
+def alerta_critica(max_pon: float = 60.0, top_n: int = 50) -> dict:
+    """SKUs con %Pon < `max_pon` — riesgo de inventario muerto."""
+    rows_raw = analitica.oportunidad_vectorizacion()
+    if not rows_raw:
+        return {"items": [], "resumen": {}}
+    items = []
+    for r in rows_raw:
+        e = _enriquecer(r)
+        if e["presencia"] <= 0:
+            continue
+        if e["ponderada_pct"] >= max_pon:
+            continue
+        regla = _regla_alerta(e)
+        items.append({
+            "IDNEPTUNO": e.get("IDNEPTUNO", ""),
+            "MARCA": e.get("MARCA", ""),
+            "PRODUCTO": e.get("PRODUCTO", ""),
+            "VENTA": round(e["venta"], 0),
+            "UNIVERSO_PDV": e["universo"],
+            "PDV_PRESENCIA": e["presencia"],
+            "PDV_VENTA_ULT_MES": e["pdv_venta_ult_mes"],
+            "cobertura_pct": e["cobertura_pct"],
+            "ponderada_pct": e["ponderada_pct"],
+            "DOI_GT60": e["doi_gt60"],
+            "regla": regla,
+        })
+    # Ordenar por venta (mayor venta = mayor exposición de inventario en riesgo)
+    items.sort(key=lambda x: x["VENTA"], reverse=True)
+    return {
+        "items": items[:top_n],
+        "resumen": {
+            "total_skus": len(items),
+            "umbral_pon": max_pon,
+        },
+    }
+
+
+# ── 3) Foco de la Semana — síntesis priorizada ───────────────────
+
+def foco_semana(top_n: int = 7) -> dict:
+    """Top N acciones priorizadas — mezcla los 3 buckets en una vista única.
+
+    Algoritmo de priorización (por categoría):
+      AMPLIAR  (%Pon ≥ 80%) → ordenar por $ uplift potencial
+      PUSH     (%Pon 60-79%) → ordenar por venta (mayor exposición)
+      ALERTA   (%Pon < 60%)  → ordenar por venta × pct_doi_gt60 (mayor stock muerto)
+
+    Mezcla intercalada: 3 ampliar + 2 push + 2 alerta (configurable por top_n).
+    """
+    vec = ampliar_vectorizacion(min_pon_pct=80.0, top_n=20)
+    ace = aceleradores_sellout(min_pon=60.0, max_pon=79.9, top_n=20)
+    ale = alerta_critica(max_pon=60.0, top_n=20)
+
+    foco = []
+    # 3 ampliar (verde)
+    for i in (vec.get("items") or [])[:3]:
+        foco.append({
+            "categoria": "AMPLIAR",
+            "color": "#10b981",
+            "icono": "🚀",
+            "MARCA": i["MARCA"],
+            "PRODUCTO": i["PRODUCTO"],
+            "metrica_clave": f"%Pon {i['ponderada_pct']}% · presencia {i['PDV_PRESENCIA']}/{i['UNIVERSO_PDV']}",
+            "accion": f"Pedir ampliación a {i['UNIVERSO_PDV'] - i['PDV_PRESENCIA']} PDVs nuevos",
+            "impacto_usd": i.get("UPLIFT", 0),
+            "IDNEPTUNO": i.get("IDNEPTUNO", ""),
+        })
+    # 2 push sell-out (ámbar)
+    for i in (ace.get("items") or [])[:2]:
+        foco.append({
+            "categoria": "PUSH SELL-OUT",
+            "color": "#f59e0b",
+            "icono": "⚡",
+            "MARCA": i["MARCA"],
+            "PRODUCTO": i["PRODUCTO"],
+            "metrica_clave": f"%Pon {i['ponderada_pct']}% · faltan {round(80 - i['ponderada_pct'], 1)}pp para gatillar ampliación",
+            "accion": i["regla"]["accion"],
+            "impacto_usd": i.get("VENTA", 0),  # venta como proxy de relevancia
+            "IDNEPTUNO": i.get("IDNEPTUNO", ""),
+        })
+    # 2 alertas (rojo)
+    for i in (ale.get("items") or [])[:2]:
+        foco.append({
+            "categoria": "ALERTA",
+            "color": "#ef4444",
+            "icono": "🚨",
+            "MARCA": i["MARCA"],
+            "PRODUCTO": i["PRODUCTO"],
+            "metrica_clave": f"%Pon {i['ponderada_pct']}% · {i['DOI_GT60']} PDVs con DOI >60d",
+            "accion": i["regla"]["accion"],
+            "impacto_usd": i.get("VENTA", 0),
+            "IDNEPTUNO": i.get("IDNEPTUNO", ""),
+        })
+
+    return {
+        "items": foco[:top_n],
+        "resumen": {
+            "total_ampliar": len(vec.get("items") or []),
+            "total_push": len(ace.get("items") or []),
+            "total_alerta": len(ale.get("items") or []),
+        },
+    }
+
+
+# ── 4) Insight con IA (Claude) ───────────────────────────────────
+
+def construir_prompt_insight(idneptuno) -> str:
+    """Genera el prompt para Claude basado en el contexto del SKU."""
+    rows = analitica.oportunidad_vectorizacion()
+    sku = next((r for r in rows if str(r.get("IDNEPTUNO", "")) == str(idneptuno)), None)
+    if not sku:
+        return ""
+    e = _enriquecer(sku)
+    presencia = max(e["presencia"], 1)
+    pct_gt60 = round(e["doi_gt60"] / presencia * 100, 1)
+    pct_30_60 = round(e["doi_30_60"] / presencia * 100, 1)
+    pct_le20 = round(e["doi_le20"] / presencia * 100, 1)
+    pct_stock0 = round(e["stock_eq0"] / presencia * 100, 1)
+    return f"""Eres consultor KAM senior para Genomma Lab Ecuador (cliente farmacéutico Difare).
+
+Producto: {e.get('MARCA', '')} - {e.get('PRODUCTO', '')}
+Venta acumulada Q1: ${round(e['venta']):,}
+Universo PDV farmacias: {e['universo']}
+Presencia actual: {e['presencia']} PDVs ({e['cobertura_pct']}% del universo)
+%Ponderada (PDVs con venta último mes / presencia): {e['ponderada_pct']}%
+PDVs con venta último mes completo: {e['pdv_venta_ult_mes']}
+
+Distribución DOI sobre presencia:
+  - Stock=0 (quiebre):     {e['stock_eq0']} PDVs ({pct_stock0}%)
+  - DOI ≤20d (rotando):    {e['doi_le20']} PDVs ({pct_le20}%)
+  - DOI 30-60d (lento):    {e['doi_30_60']} PDVs ({pct_30_60}%)
+  - DOI >60d (stock alto): {e['doi_gt60']} PDVs ({pct_gt60}%)
+
+Reglas de negocio:
+- %Pon ≥ 80% → cliente aprueba ampliación de vectorización inmediata
+- %Pon 60-79% → "casi ahí", debes empujar sell-out para cruzar al 80%
+- %Pon < 60% → riesgo de inventario muerto, requiere aceleradores fuertes
+
+Genera un plan de acción accionable de 3-5 puntos para esta semana, en español, conciso y ejecutivo. Cada punto debe ser concreto (ej: "activar promotor en X PDVs", "negociar combo Y con buyer Z"), con orden de prioridad y, si aplica, impacto estimado. NO uses jerga genérica. NO uses bullets > 2 niveles. Máximo 200 palabras."""
+
+
+def insight_ia(idneptuno, anthropic_client) -> dict:
+    """Llama a Claude con el contexto del SKU y devuelve el plan."""
+    prompt = construir_prompt_insight(idneptuno)
+    if not prompt:
+        return {"error": "SKU no encontrado"}
+    if not anthropic_client:
+        return {"error": "Cliente Anthropic no configurado"}
+    try:
+        resp = anthropic_client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return {"recomendacion": resp.content[0].text.strip()}
+    except Exception as e:
+        return {"error": f"Error IA: {str(e)[:200]}"}
