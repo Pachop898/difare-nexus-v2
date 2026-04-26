@@ -42,20 +42,37 @@ def _meses_ordenados(df_farm: pd.DataFrame) -> list[str]:
 def _detectar_mes_completo_y_actual(df_farm: pd.DataFrame) -> tuple[Optional[str], Optional[str], dict]:
     """Devuelve (mes_completo, mes_actual_parcial, stats) para análisis de tendencia.
 
-    Detección: si el último mes tiene <50% del row count del penúltimo, el
-    último es parcial → mes_completo = penúltimo, mes_actual = último.
-    Caso contrario (todo completo): mes_completo = último, mes_actual = None.
+    Heurística primaria: mira el último DIA disponible del SAP en el último
+    mes. Si el día (DD) es menor que (dias_del_mes - 2), el mes es parcial.
+    Esto es más robusto que comparar row counts, porque el SAP semanal
+    acumulado puede traer muchos registros incluso de un mes con pocos días.
     """
     meses = _meses_ordenados(df_farm)
     if not meses:
         return None, None, {}
     if len(meses) < 2:
         return meses[-1], None, {}
+    last = meses[-1]
+    # Vía DIA del SAP — más confiable
+    if "DIA" in df_farm.columns:
+        dias_last = df_farm[df_farm["MES"].astype(str) == last]["DIA"].dropna().astype(str)
+        dias_norm = [re.sub(r"\D", "", str(d))[:8] for d in dias_last]
+        dias_norm = [d for d in dias_norm if len(d) == 8]
+        if dias_norm:
+            try:
+                max_dia = max(dias_norm)
+                day_num = int(max_dia[6:8])
+                dias_total = _dias_mes(last)
+                if day_num < dias_total - 2:
+                    return meses[-2], last, {"dia_corte": day_num, "dias_total_mes": dias_total}
+            except Exception:
+                pass
+    # Fallback: row count (heurística antigua, solo si no hay DIA usable)
     rows_last = int((df_farm["MES"].astype(str) == meses[-1]).sum())
     rows_prev = int((df_farm["MES"].astype(str) == meses[-2]).sum())
     if rows_prev > 0 and rows_last < rows_prev * 0.5:
         return meses[-2], meses[-1], {"rows_actual": rows_last, "rows_completo": rows_prev}
-    return meses[-1], None, {"rows_actual": rows_last, "rows_completo": rows_last}
+    return last, None, {}
 
 
 def _pdvs_con_venta_por_producto(df_farm: pd.DataFrame, mes: Optional[str]) -> dict:

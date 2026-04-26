@@ -1248,10 +1248,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">%Cob</th>
               <th class="text-center px-2 py-2" title="PDVs con venta en último mes completo">#PDV<br>con Venta</th>
               <th class="text-center px-2 py-2">%Pon</th>
-              <th class="text-center px-2 py-2" title="PDVs con venta proyectados al cierre del mes en curso">PDV mes<br>actual (proy)</th>
-              <th class="text-center px-2 py-2" title="Variación proyectada vs último mes completo">Tend %</th>
-              <th class="text-right px-2 py-2" style="color:#10b981" title="Venta estimada si presencia = universo">$ Potencial</th>
-              <th class="text-right px-2 py-2" style="color:#10b981">$ Uplift</th>
+              <th class="text-center px-2 py-2" title="PDVs proyectados con venta al cierre del mes en curso (extrapolando los días corridos)">PDV mes<br>actual (proy)</th>
+              <th class="text-center px-2 py-2" title="Variación proyectada de PDVs vs último mes completo (verde = creciendo en cobertura)">Tend %</th>
+              <th class="text-right px-2 py-2" style="color:#10b981" title="Venta estimada si la presencia llegara al universo (venta_actual × universo / presencia)">$ Potencial</th>
+              <th class="text-right px-2 py-2" style="color:#10b981" title="$ Potencial menos venta actual = lo que ganarías al cerrar el gap de cobertura">$ Uplift</th>
             </tr>
           </thead>
           <tbody id="op-vec-body"><tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
