@@ -1207,8 +1207,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   </div>
 
   <!-- ══════ MÓDULO: Vista Campo (iframe embebido) ══════ -->
-  <div id="mod-campo" class="module" style="margin:-24px;height:100vh">
-    <iframe id="campo-iframe" src="about:blank" style="width:calc(100% + 48px);height:100%;border:none"></iframe>
+  <div id="mod-campo" class="module" style="margin:-24px 0 0 0;padding:0;height:calc(100vh - 24px);overflow:hidden">
+    <iframe id="campo-iframe" src="about:blank" style="width:100%;height:100%;border:none;display:block"></iframe>
   </div>
 
 </main>
@@ -1262,7 +1262,8 @@ function showModule(id){
   if(id==='campo'){
     const ifr=document.getElementById('campo-iframe');
     if(ifr && (!ifr.src || ifr.src==='about:blank' || ifr.getAttribute('src')==='about:blank')){
-      ifr.src='/?modo=campo';
+      // embedded=1 → la vista campo oculta su propio header (lo aporta el dashboard)
+      ifr.src='/?modo=campo&embedded=1';
     }
   }
   window.scrollTo(0,0);
@@ -2491,6 +2492,12 @@ body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;
 .login-error{font-size:12px;color:var(--red);min-height:18px;}
 
 .header{background:var(--navy2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+/* Modo embebido (vista campo dentro del dashboard via iframe):
+   ocultar el header propio para no duplicar el header del dashboard,
+   y eliminar márgenes/padding para que ocupe el ancho disponible. */
+html.embedded .header{display:none;}
+html.embedded #appScreen{padding:0;}
+html.embedded .content{padding:12px 16px;}
 .logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--navy);}
 .logo-name{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--gold);}
 .logo-sub{font-size:11px;color:var(--muted);}
@@ -2612,7 +2619,49 @@ let TK=localStorage.getItem("nx_tk")||null, US=localStorage.getItem("nx_us")||nu
 let RL=localStorage.getItem("nx_rl")||null;
 let posActual=null, esperando=false;
 
+// Detectar si la vista campo está embebida dentro del dashboard (iframe).
+// Si es así, ocultar el header propio para no duplicarlo.
+const _ESTA_EMBEBIDO = (window !== window.parent) ||
+  (new URLSearchParams(location.search).get("embedded") === "1");
+if (_ESTA_EMBEBIDO) {
+  document.documentElement.classList.add("embedded");
+}
+
 function AH(){return{"Content-Type":"application/json","Authorization":"Bearer "+TK}}
+
+// Helper: muestra un mensaje de carga con contador de segundos transcurridos.
+// Devuelve una función para limpiar el intervalo.
+function _loadingConContador(elementId, mensaje){
+  const el = document.getElementById(elementId);
+  if (!el) return () => {};
+  const inicio = Date.now();
+  const render = () => {
+    const seg = Math.floor((Date.now() - inicio) / 1000);
+    const sufijo = seg > 0 ? ` <span style="opacity:.7">(${seg}s)</span>` : "";
+    const hint = seg >= 30 ? '<div style="margin-top:8px;font-size:11px;opacity:.6">Primer arranque puede tardar hasta 90s tras un período de inactividad</div>' : "";
+    el.innerHTML = `<div class="loading">${mensaje}${sufijo}${hint}</div>`;
+  };
+  render();
+  const tid = setInterval(render, 1000);
+  return () => clearInterval(tid);
+}
+
+// Fetch con timeout largo + 2 reintentos para endpoints lentos (cold start).
+async function _fetchConRetry(url, opciones={}, timeoutMs=120000, maxIntentos=2){
+  for (let i=1; i<=maxIntentos; i++){
+    const ctrl = new AbortController();
+    const tid = setTimeout(()=>ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, {...opciones, signal: ctrl.signal});
+      clearTimeout(tid);
+      return r;
+    } catch (e) {
+      clearTimeout(tid);
+      if (i === maxIntentos) throw e;
+      await new Promise(r=>setTimeout(r, 2000));
+    }
+  }
+}
 
 function routePorRol(){
   // Si viene con ?modo=campo, no redirigir al dashboard — mostrar vista campo
@@ -2658,20 +2707,35 @@ function cerrarSesion(){
 
 async function mostrarGrupos(){
   posActual=null;document.getElementById("inputArea").style.display="none";
-  const c=document.getElementById("content");c.innerHTML='<div class="loading">Cargando grupos...</div>';
-  try{const r=await fetch(S+"/grupos",{headers:AH()});if(r.status===401){cerrarSesion();return;}
-    const g=await r.json();const ic={"Cruz Azul Mostrador":"&#x1F3EA;","Cruz Azul Autoservicio":"&#x1F6D2;","Pharmacys":"&#x1F48A;","Dromayor":"&#x1F3EC;","Bodegas Internas Privadas":"&#x1F4E6;"};
+  const stop = _loadingConContador("content", "Cargando grupos…");
+  try{
+    const r=await _fetchConRetry(S+"/grupos",{headers:AH()},120000,2);
+    if(r.status===401){stop();cerrarSesion();return;}
+    const g=await r.json();
+    stop();
+    const c=document.getElementById("content");
+    const ic={"Cruz Azul Mostrador":"&#x1F3EA;","Cruz Azul Autoservicio":"&#x1F6D2;","Pharmacys":"&#x1F48A;","Dromayor":"&#x1F3EC;","Bodegas Internas Privadas":"&#x1F4E6;"};
     c.innerHTML='<div class="panel"><div class="panel-title">Selecciona el grupo de farmacias</div><div class="panel-sub">Ordenados por venta Q1 2026</div><div class="grupos-grid">'+
       g.map(x=>'<div class="grupo-card" onclick="mostrarFarmacias(\''+encodeURIComponent(x.grupo)+"','"+x.grupo.replace(/'/g,"\\'")+"')\">"+'<div style="font-size:20px;margin-bottom:6px">'+(ic[x.grupo]||"&#x1F3EA;")+'</div><div class="grupo-nombre">'+x.grupo+'</div><div class="grupo-stats">'+x.total_pos+' farmacias &middot; $'+(x.ventas/1000).toFixed(0)+'K</div></div>').join("")+'</div></div>';
-  }catch(e){c.innerHTML='<div class="loading">No se pudo conectar al servidor.</div>';}
+  }catch(e){
+    stop();
+    document.getElementById("content").innerHTML='<div class="loading">No se pudo conectar. <button onclick="mostrarGrupos()" style="margin-left:8px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">Reintentar</button></div>';
+  }
 }
 
 async function mostrarFarmacias(ge,gn){
-  const c=document.getElementById("content");c.innerHTML='<div class="loading">Cargando farmacias...</div>';
-  try{const r=await fetch(S+"/farmacias?grupo="+ge,{headers:AH()});if(r.status===401){cerrarSesion();return;}
-    const f=await r.json();window._f=f;
-    c.innerHTML='<div class="panel"><button class="btn-back" onclick="mostrarGrupos()">&#8592; Cambiar grupo</button><div class="panel-title">Farmacias de '+gn+'</div><div class="panel-sub">'+f.length+' farmacias</div><div class="search-wrap"><span class="search-icon">&#128269;</span><input class="search-input" id="si" placeholder="Buscar farmacia..." oninput="filtF(this.value)"></div><div class="farm-list" id="fl">'+renF(f)+'</div></div>';
-  }catch(e){c.innerHTML='<div class="loading">Error al cargar.</div>';}
+  const stop = _loadingConContador("content", "Cargando farmacias…");
+  try{
+    const r=await _fetchConRetry(S+"/farmacias?grupo="+ge,{headers:AH()},90000,2);
+    if(r.status===401){stop();cerrarSesion();return;}
+    const f=await r.json();
+    stop();
+    window._f=f;
+    document.getElementById("content").innerHTML='<div class="panel"><button class="btn-back" onclick="mostrarGrupos()">&#8592; Cambiar grupo</button><div class="panel-title">Farmacias de '+gn+'</div><div class="panel-sub">'+f.length+' farmacias</div><div class="search-wrap"><span class="search-icon">&#128269;</span><input class="search-input" id="si" placeholder="Buscar farmacia..." oninput="filtF(this.value)"></div><div class="farm-list" id="fl">'+renF(f)+'</div></div>';
+  }catch(e){
+    stop();
+    document.getElementById("content").innerHTML='<div class="loading">Error al cargar. <button onclick="mostrarFarmacias(\''+ge+"','"+gn.replace(/'/g,"\\'")+'\')" style="margin-left:8px;background:var(--gold);color:var(--navy);border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">Reintentar</button></div>';
+  }
 }
 function renF(f){return f.slice(0,40).map(x=>'<div class="farm-item" onclick="selPos(\''+x.pos.replace(/'/g,"\\'")+"')\">"+'<div class="farm-nombre">'+x.pos+'</div><div class="farm-venta">$'+Math.round(x.ventas).toLocaleString("es-EC")+'</div></div>').join("");}
 function filtF(t){if(!window._f)return;document.getElementById("fl").innerHTML=renF(window._f.filter(x=>x.pos.toLowerCase().includes(t.toLowerCase())));}
