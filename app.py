@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import base64
+import traceback
 from urllib.parse import unquote
 from dotenv import load_dotenv
 
@@ -286,35 +287,12 @@ def health_db():
 def get_grupos():
     if not auth_user():
         return jsonify({"error": "No autorizado"}), 401
-
-    rows = query("""
-        SELECT GRUPOPDV,
-               SUM("VENTA NETA RECUPERO") as ventas,
-               COUNT(DISTINCT COALESCE(CODIGOPDV, POS)) as pos_count
-        FROM ventas WHERE UNIDAD='FARMACIAS'
-        GROUP BY GRUPOPDV ORDER BY ventas DESC
-    """)
-
-    mapeo = {
-        "cafi mostrador": "Cruz Azul Mostrador",
-        "cafa mostrador": "Cruz Azul Mostrador",
-        "cofa mostrador": "Cruz Azul Mostrador",
-        "cafi autoservicio": "Cruz Azul Autoservicio",
-        "cafa autoservicio": "Cruz Azul Autoservicio"
-    }
-
-    agrupados = {}
-    for r in rows:
-        nombre = mapeo.get(r["GRUPOPDV"].lower(), r["GRUPOPDV"])
-        if nombre not in agrupados:
-            agrupados[nombre] = {"ventas": 0, "pos_count": 0}
-        agrupados[nombre]["ventas"] += r["ventas"]
-        agrupados[nombre]["pos_count"] += r["pos_count"]
-
-    resultado = [{"grupo": k, "ventas": round(v["ventas"], 2), "total_pos": v["pos_count"]}
-                 for k, v in agrupados.items()]
-    resultado.sort(key=lambda x: x["ventas"], reverse=True)
-    return jsonify(resultado), 200
+    try:
+        from agente import campo_pandas
+        return jsonify(campo_pandas.obtener_grupos()), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Error obteniendo grupos: {str(e)[:200]}"}), 500
 
 
 @app.route("/farmacias", methods=["GET"])
@@ -322,43 +300,15 @@ def get_grupos():
 def get_farmacias_por_grupo(grupo=None):
     if not auth_user():
         return jsonify({"error": "No autorizado"}), 401
-
-    # Aceptamos grupo via query param o path (mas robusto ante URL encoding)
     if not grupo:
         grupo = request.args.get("grupo", "")
     grupo_decoded = unquote(grupo).replace("_", " ").strip()
-
-    mapeo_inv = {
-        "cruz azul mostrador": ("cafi mostrador", "cafa mostrador", "cofa mostrador"),
-        "cruz azul autoservicio": ("cafi autoservicio", "cafa autoservicio"),
-    }
-
-    grupos = mapeo_inv.get(grupo_decoded.lower(), (grupo_decoded.lower(),))
-    placeholders = ",".join(["?" for _ in grupos])
-
-    rows = query(f"""
-        SELECT POS as pos_nombre,
-               COALESCE(CODIGOPDV, POS) as codigo,
-               SUM("VENTA NETA RECUPERO") as ventas,
-               SUM(UNIDADES_ROTADAS) as unidades
-        FROM ventas
-        WHERE UNIDAD='FARMACIAS' AND LOWER(GRUPOPDV) IN ({placeholders})
-        GROUP BY COALESCE(CODIGOPDV, POS)
-        ORDER BY ventas DESC
-    """, grupos)
-
-    if not rows:
-        rows = query("""
-            SELECT POS as pos_nombre, POS as codigo,
-                   SUM("VENTA NETA RECUPERO") as ventas, SUM(UNIDADES_ROTADAS) as unidades
-            FROM ventas WHERE UNIDAD='FARMACIAS' AND LOWER(GRUPOPDV) LIKE ?
-            GROUP BY POS ORDER BY ventas DESC
-        """, (f"%{grupo_decoded.lower()}%",))
-
-    return jsonify([{
-        "pos": r["pos_nombre"], "codigo": r["codigo"],
-        "ventas": round(r["ventas"], 2), "unidades": int(r["unidades"] or 0)
-    } for r in rows]), 200
+    try:
+        from agente import campo_pandas
+        return jsonify(campo_pandas.obtener_farmacias(grupo_decoded)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Error obteniendo farmacias: {str(e)[:200]}"}), 500
 
 
 @app.route("/buscar_pos", methods=["GET"])
@@ -368,25 +318,12 @@ def buscar_pos():
     texto = request.args.get("q", "").strip()
     if len(texto) < 2:
         return jsonify([]), 200
-    rows = query("""
-        SELECT POS as pos, SUM("VENTA NETA RECUPERO") as ventas
-        FROM ventas WHERE UNIDAD='FARMACIAS' AND LOWER(POS) LIKE ?
-        GROUP BY POS ORDER BY ventas DESC LIMIT 30
-    """, (f"%{texto.lower()}%",))
-    return jsonify([{"pos": r["pos"], "ventas": round(r["ventas"], 2)} for r in rows]), 200
-
-
-def _resolver_filtro_pos(pos_nombre):
-    """Devuelve (filtro_sql, param_tupla) para filtrar por farmacia.
-    Prefiere CODIGOPDV (identificador estable del PDV); cae a POS por nombre
-    como fallback. Esto evita perder data cuando el cliente envia el mismo PDV
-    con variaciones menores en el nombre entre archivos mensuales/semanales."""
-    r = query("SELECT CODIGOPDV FROM ventas WHERE POS=? AND CODIGOPDV IS NOT NULL AND CODIGOPDV!='' LIMIT 1", (pos_nombre,), one=True)
-    if not (r and r["CODIGOPDV"]):
-        r = query("SELECT CODIGOPDV FROM sap WHERE POS=? AND CODIGOPDV IS NOT NULL AND CODIGOPDV!='' LIMIT 1", (pos_nombre,), one=True)
-    if r and r["CODIGOPDV"] not in (None, ""):
-        return "CODIGOPDV=?", (str(r["CODIGOPDV"]),)
-    return "POS=?", (pos_nombre,)
+    try:
+        from agente import campo_pandas
+        return jsonify(campo_pandas.buscar_pos(texto)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Error buscando: {str(e)[:200]}"}), 500
 
 
 @app.route("/detalle_pos", methods=["POST", "OPTIONS"])
@@ -399,239 +336,15 @@ def detalle_pos():
     pos = (request.json or {}).get("pos", "")
     if not pos:
         return jsonify({"error": "POS requerido"}), 400
-
-    flt, p = _resolver_filtro_pos(pos)
-
-    info = query(f"SELECT GRUPOPDV, SUM(\"VENTA NETA RECUPERO\") as vt, SUM(UNIDADES_ROTADAS) as ur FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY GRUPOPDV", p, one=True)
-    if not info:
-        return jsonify({"error": f"No se encontro {pos}"}), 404
-
-    # Meses de ventas (mensual oficial) — tienen precedencia sobre sap (semanal)
-    meses_ventas_pos = set(str(r["m"]) for r in query(
-        f"SELECT DISTINCT substr(DIA,1,6) as m FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt}", p))
-
-    # Sumar ventas adicionales desde sap excluyendo meses que ya estan en ventas
-    extra_vt_sum = 0.0
-    extra_ur_sum = 0.0
-    for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as vt, SUM(UNIDADES_ROTADAS) as ur FROM sap WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY DIA", p):
-        dia = str(r["DIA"])
-        mes6 = dia[:4] + dia[5:7] if "/" in dia else dia[:6]
-        if mes6 in meses_ventas_pos:
-            continue
-        extra_vt_sum += (r["vt"] or 0)
-        extra_ur_sum += (r["ur"] or 0)
-    vt_extra = extra_vt_sum
-    ur_extra = extra_ur_sum
-
-    venta_total = (info["vt"] or 0) + vt_extra
-    total_farm = (query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM ventas WHERE UNIDAD='FARMACIAS'") or 0) \
-               + (query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM sap WHERE UNIDAD='FARMACIAS'") or 0)
-    pct = (venta_total / total_farm * 100) if total_farm > 0 else 0
-
-    # Tendencia mensual (ventas Ene/Feb + sap Mar)
-    tend = {}
-    dias_con_data = {}  # mes -> set(dias YYYYMMDD) — GLOBAL (todos los PDV), no solo este
-    meses_en_ventas = set()
-    for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY DIA", p):
-        mes = parsear_mes(r["DIA"])
-        tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
-        meses_en_ventas.add(mes)
-    for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM sap WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY DIA", p):
-        mes = parsear_mes(r["DIA"])
-        # Precedencia: si el mes ya existe en ventas (mensual oficial), ignorar el semanal
-        if mes in meses_en_ventas:
-            continue
-        tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
-    # Dias con data GLOBALES por mes: cuantos dias distintos tiene el SAP
-    # (no depende del PDV; así proyectamos abril sobre 12 días, no 5).
-    # Normalizamos DIA a 'YYYYMMDD' para deduplicar formatos '2026/04/01'
-    # y '20260401', y excluimos días con <100 filas (ventas de madrugada
-    # del día siguiente al corte del snapshot semanal — p.ej. 13/04 con 2 filas).
-    import re as _re
-    _conteo = {}
-    for r in query("SELECT DIA, COUNT(*) as n FROM sap WHERE UNIDAD='FARMACIAS' AND DIA IS NOT NULL GROUP BY DIA"):
-        mes = parsear_mes(r["DIA"])
-        if mes in meses_en_ventas:
-            continue
-        d_norm = _re.sub(r"\D", "", str(r["DIA"]))[:8]
-        if len(d_norm) != 8:
-            continue
-        _conteo.setdefault(mes, {})
-        _conteo[mes][d_norm] = _conteo[mes].get(d_norm, 0) + (r["n"] or 0)
-    for mes, dias_n in _conteo.items():
-        for d, n in dias_n.items():
-            if n >= 100:  # umbral: filas residuales de madrugada (≈2) quedan fuera
-                dias_con_data.setdefault(mes, set()).add(d)
-
-    import calendar
-    def _dias_en_mes(mes_key):
-        try:
-            y, m = mes_key.split("-") if "-" in mes_key else (mes_key[:4], mes_key[4:6])
-            return calendar.monthrange(int(y), int(m))[1]
-        except Exception:
-            return 30
-
-    # Ordenar por mes y agregar etiqueta corta + prorrateo si el mes esta incompleto
-    tend_ord = []
-    for mes_key in sorted(tend.keys()):
-        mm = mes_key[-2:] if "-" in mes_key else mes_key[4:6] if len(mes_key) >= 6 else ""
-        label = MESES_ES.get(mm, mes_key)
-        valor = tend[mes_key]
-        dias_data = len(dias_con_data.get(mes_key, set()))
-        dias_tot = _dias_en_mes(mes_key)
-        entry = {"mes": mes_key, "label": label, "valor": valor,
-                 "dias_con_data": dias_data, "dias_mes": dias_tot, "parcial": False}
-        # Prorratear si tenemos datos diarios y el mes esta incompleto
-        if 0 < dias_data < dias_tot:
-            entry["valor_real"] = valor
-            entry["valor_prorrateado"] = round(valor / dias_data * dias_tot, 2)
-            entry["parcial"] = True
-        tend_ord.append(entry)
-
-    proyeccion = _calc_proyeccion(tend_ord)
-
-    # Top productos (ventas + sap excluyendo meses con precedencia)
-    top_map = {}
-    for r in query(f"SELECT PRODUCTO, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY PRODUCTO", p):
-        top_map[r["PRODUCTO"]] = top_map.get(r["PRODUCTO"], 0) + (r["v"] or 0)
-    for r in query(f"SELECT PRODUCTO, DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM sap WHERE UNIDAD='FARMACIAS' AND {flt} GROUP BY PRODUCTO, DIA", p):
-        dia = str(r["DIA"])
-        mes6 = dia[:4] + dia[5:7] if "/" in dia else dia[:6]
-        if mes6 in meses_ventas_pos:
-            continue
-        top_map[r["PRODUCTO"]] = top_map.get(r["PRODUCTO"], 0) + (r["v"] or 0)
-    top_prods = {k: round(v, 2) for k, v in sorted(top_map.items(), key=lambda x: x[1], reverse=True)[:5]}
-
-    # Stock SAP
-    stock_info = _get_stock_pos(pos, flt=flt, p=p)
-
-    return jsonify({
-        "pos": pos,
-        "grupo_pdv": info["GRUPOPDV"],
-        "venta_total": round(venta_total, 2),
-        "unidades_rotadas": int((info["ur"] or 0) + ur_extra),
-        "pct_del_total": round(pct, 2),
-        "tendencia_mensual": tend,
-        "tendencia_ordenada": tend_ord,
-        "proyeccion_proximo_mes": proyeccion,
-        "top_5_productos": top_prods,
-        "stock_info": stock_info
-    }), 200
-
-
-def _get_stock_pos(pos, flt=None, p=None):
-    """Stock desde tabla SAP — devuelve tabla completa de items codificados"""
-    if flt is None or p is None:
-        flt, p = _resolver_filtro_pos(pos)
-    # Adaptamos el filtro para el JOIN (usa alias s.)
-    flt_s = flt.replace("CODIGOPDV=?", "s.CODIGOPDV=?").replace("POS=?", "s.POS=?")
-    flt_inner = flt  # dentro del subquery sin alias
     try:
-        # Ultimo DIA por producto (tomar la foto mas reciente disponible por cada item)
-        rows = query(f"""
-            SELECT s.PRODUCTO, s.IDNEPTUNO, s.STOCK, s.STOCK_VALORIZADO, s.DIA
-            FROM sap s
-            INNER JOIN (
-                SELECT IDNEPTUNO, MAX(DIA) as max_dia
-                FROM sap WHERE UNIDAD='FARMACIAS' AND {flt_inner}
-                GROUP BY IDNEPTUNO
-            ) ult ON ult.IDNEPTUNO = s.IDNEPTUNO AND ult.max_dia = s.DIA
-            WHERE s.UNIDAD='FARMACIAS' AND {flt_s}
-            ORDER BY s.STOCK_VALORIZADO DESC, s.STOCK DESC
-        """, p + p)
-
-        if not rows:
-            return {"mensaje": "Sin registros en SAP", "detalle_completo": []}
-
-        ultimo_dia = max((r["DIA"] for r in rows), default="")
-        total_unid = sum((r["STOCK"] or 0) for r in rows)
-        total_val = sum((r["STOCK_VALORIZADO"] or 0) for r in rows)
-
-        detalle = [{
-            "producto": r["PRODUCTO"],
-            "id_neptuno": r["IDNEPTUNO"],
-            "stock_unid": float(r["STOCK"] or 0),
-            "stock_val": round(float(r["STOCK_VALORIZADO"] or 0), 2),
-            "dia": str(r["DIA"])
-        } for r in rows]
-
-        con_stock = [d for d in detalle if d["stock_unid"] > 0]
-        sin_stock = [d for d in detalle if d["stock_unid"] == 0]
-        bajo = [d for d in con_stock if 0 < d["stock_unid"] <= 3]
-
-        return {
-            "fecha": str(ultimo_dia),
-            "total_productos": len(detalle),
-            "total_con_stock": len(con_stock),
-            "total_sin_stock": len(sin_stock),
-            "total_unidades": round(total_unid, 0),
-            "total_valorizado": round(total_val, 2),
-            "detalle_completo": detalle,
-            "sin_stock": [d["producto"] for d in sin_stock][:8],
-            "bajo_stock": [{"PRODUCTO": d["producto"], "STOCK": d["stock_unid"]} for d in bajo][:8],
-            # Retrocompat
-            "detalle_stock": [{"PRODUCTO": d["producto"], "STOCK": d["stock_unid"]} for d in con_stock[:15]],
-            "con_stock_ok": [{"PRODUCTO": d["producto"], "STOCK": d["stock_unid"]} for d in con_stock if d["stock_unid"] > 3][:5]
-        }
+        from agente import campo_pandas
+        resultado = campo_pandas.obtener_detalle_pos(pos)
+        if resultado.get("error"):
+            return jsonify(resultado), 404
+        return jsonify(resultado), 200
     except Exception as e:
-        return {"error": f"Error: {str(e)[:80]}", "detalle_completo": []}
-
-
-def _calc_proyeccion(tend_ord):
-    """Proyeccion del MES EN CURSO (cierre). Si el ultimo mes es parcial,
-    proyecta su cierre con formula lineal: valor / dias_data * dias_mes.
-    Si el ultimo mes ya esta completo, proyecta el proximo mes con crecimiento promedio."""
-    if not tend_ord:
-        return None
-    last = tend_ord[-1]
-    # Caso principal: mes en curso parcial -> proyeccion lineal del cierre
-    if last.get("parcial"):
-        valor_real = last["valor"]
-        dias_data = last.get("dias_con_data", 0)
-        dias_mes = last.get("dias_mes", 30)
-        if dias_data > 0:
-            proy = valor_real / dias_data * dias_mes
-        else:
-            proy = valor_real
-        # % vs mes anterior (para ver si cierra mejor o peor)
-        pct_vs_prev = None
-        if len(tend_ord) >= 2:
-            prev = tend_ord[-2]["valor"]
-            if prev > 0:
-                pct_vs_prev = round((proy - prev) / prev * 100, 1)
-        return {
-            "valor": round(proy, 2),
-            "label": "Proy. " + last["label"],
-            "mes_en_curso": True,
-            "crecimiento_pct": pct_vs_prev,
-            "metodo": f"lineal {round(valor_real,2)}/{dias_data}*{dias_mes}"
-        }
-    # Fallback: todos los meses completos -> proyectar proximo mes con crecimiento
-    def _vef(e):
-        return e.get("valor_prorrateado", e["valor"])
-    if len(tend_ord) == 1:
-        return {"valor": round(_vef(tend_ord[0]), 2), "label": "Proy.", "metodo": "ultimo mes"}
-    crec = []
-    for i in range(1, len(tend_ord)):
-        prev = _vef(tend_ord[i-1])
-        cur = _vef(tend_ord[i])
-        if prev > 0:
-            crec.append((cur - prev) / prev)
-    base = _vef(tend_ord[-1])
-    if not crec:
-        return {"valor": round(base, 2), "label": "Proy.", "metodo": "ultimo mes"}
-    avg = sum(crec) / len(crec)
-    proy = base * (1 + avg)
-    return {
-        "valor": round(proy, 2),
-        "label": "Proy.",
-        "crecimiento_pct": round(avg * 100, 1),
-        "metodo": f"crecimiento promedio {round(avg*100,1)}%"
-    }
-
-
-MESES_ES = {"01":"Ene","02":"Feb","03":"Mar","04":"Abr","05":"May","06":"Jun",
-            "07":"Jul","08":"Ago","09":"Sep","10":"Oct","11":"Nov","12":"Dic"}
+        traceback.print_exc()
+        return jsonify({"error": f"Error obteniendo detalle: {str(e)[:200]}"}), 500
 
 
 @app.route("/productos_faltantes", methods=["POST", "OPTIONS"])
@@ -640,61 +353,15 @@ def productos_faltantes():
         return "", 204
     if not auth_user():
         return jsonify({"error": "No autorizado"}), 401
-
     pos = (request.json or {}).get("pos", "")
     if not pos:
         return jsonify({"error": "POS requerido"}), 400
-
-    resultado = _calc_faltantes(pos)
-    return jsonify(resultado), 200
-
-
-def _calc_faltantes(pos):
-    """Top 5 productos faltantes con oportunidad"""
-    flt, p = _resolver_filtro_pos(pos)
-    prods_farm = query(f"SELECT DISTINCT PRODUCTO FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt}", p)
-    if not prods_farm:
-        return {"pos": pos, "error": f"No se encontro {pos}"}
-
-    productos_en = set(r["PRODUCTO"] for r in prods_farm)
-
-    ranking = query("""
-        SELECT PRODUCTO, MARCA,
-               SUM("VENTA NETA RECUPERO") as venta_total,
-               COUNT(DISTINCT POS) as num_farmacias,
-               SUM(UNIDADES_ROTADAS) as unidades_totales
-        FROM ventas WHERE UNIDAD='FARMACIAS'
-        GROUP BY PRODUCTO ORDER BY venta_total DESC
-    """)
-
-    total_farmacias = query_val("SELECT COUNT(DISTINCT POS) FROM ventas WHERE UNIDAD='FARMACIAS'")
-
-    faltantes = [r for r in ranking if r["PRODUCTO"] not in productos_en][:20]
-
-    resultado = []
-    for r in faltantes[:5]:
-        vta_prom = r["venta_total"] / r["num_farmacias"] if r["num_farmacias"] > 0 else 0
-        pen = (r["num_farmacias"] / total_farmacias * 100) if total_farmacias > 0 else 0
-        score = vta_prom * (r["num_farmacias"] / total_farmacias) if total_farmacias > 0 else 0
-        resultado.append({
-            "marca": r["MARCA"],
-            "producto": r["PRODUCTO"],
-            "venta_global_total": round(r["venta_total"], 2),
-            "venta_promedio_por_farmacia": round(vta_prom, 2),
-            "disponible_en_farmacias": r["num_farmacias"],
-            "penetracion_mercado": round(pen, 1),
-            "unidades_totales_vendidas": int(r["unidades_totales"] or 0),
-            "score_oportunidad": round(score, 2)
-        })
-
-    return {
-        "pos": pos,
-        "total_productos_faltantes": len(faltantes),
-        "top_5_productos_faltantes": resultado,
-        "productos_en_farmacia": len(productos_en),
-        "productos_globales": len(ranking),
-        "total_farmacias_red": total_farmacias
-    }
+    try:
+        from agente import campo_pandas
+        return jsonify(campo_pandas.obtener_faltantes(pos)), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Error obteniendo faltantes: {str(e)[:200]}"}), 500
 
 
 # ══════════════════════════════════════════════════════════════
@@ -714,65 +381,14 @@ def chat():
     if not pregunta:
         return jsonify({"error": "Pregunta vacia"}), 400
 
-    if contexto_pos:
-        flt_c, p_c = _resolver_filtro_pos(contexto_pos)
-        info = query(f"SELECT GRUPOPDV, SUM(\"VENTA NETA RECUPERO\") as vt FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY GRUPOPDV", p_c, one=True)
-        if not info:
-            return jsonify({"error": f"Farmacia {contexto_pos} no encontrada"}), 404
-
-        meses_v_ctx = set(str(r["m"]) for r in query(
-            f"SELECT DISTINCT substr(DIA,1,6) as m FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt_c}", p_c))
-        def _mes6(d):
-            d = str(d)
-            return d[:4] + d[5:7] if "/" in d else d[:6]
-
-        extra_vt = 0.0
-        for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as vt FROM sap WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY DIA", p_c):
-            if _mes6(r["DIA"]) in meses_v_ctx: continue
-            extra_vt += (r["vt"] or 0)
-        venta_total_ctx = (info["vt"] or 0) + extra_vt
-        total_farm = (query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM ventas WHERE UNIDAD='FARMACIAS'") or 0) \
-                   + (query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM sap WHERE UNIDAD='FARMACIAS'") or 0)
-        pct = (venta_total_ctx / total_farm * 100) if total_farm else 0
-
-        tend = {}
-        for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY DIA", p_c):
-            mes = parsear_mes(r["DIA"])
-            tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
-        for r in query(f"SELECT DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM sap WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY DIA", p_c):
-            if _mes6(r["DIA"]) in meses_v_ctx: continue
-            mes = parsear_mes(r["DIA"])
-            tend[mes] = round(tend.get(mes, 0) + (r["v"] or 0), 2)
-
-        top_map_c = {}
-        for r in query(f"SELECT PRODUCTO, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY PRODUCTO", p_c):
-            top_map_c[r["PRODUCTO"]] = top_map_c.get(r["PRODUCTO"], 0) + (r["v"] or 0)
-        for r in query(f"SELECT PRODUCTO, DIA, SUM(\"VENTA NETA RECUPERO\") as v FROM sap WHERE UNIDAD='FARMACIAS' AND {flt_c} GROUP BY PRODUCTO, DIA", p_c):
-            if _mes6(r["DIA"]) in meses_v_ctx: continue
-            top_map_c[r["PRODUCTO"]] = top_map_c.get(r["PRODUCTO"], 0) + (r["v"] or 0)
-        top = [{"PRODUCTO": k, "v": v} for k, v in sorted(top_map_c.items(), key=lambda x: x[1], reverse=True)[:5]]
-        stock = _get_stock_pos(contexto_pos)
-        faltantes = _calc_faltantes(contexto_pos).get("top_5_productos_faltantes", [])
-
-        contexto = {
-            "pos": contexto_pos, "grupo": info["GRUPOPDV"],
-            "venta_total": round(venta_total_ctx, 2), "pct_total": round(pct, 2),
-            "tendencia": tend,
-            "top_productos": {r["PRODUCTO"]: round(r["v"], 2) for r in top},
-            "stock": stock,
-            "productos_faltantes_oportunidad": faltantes
-        }
-    else:
-        vf = query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM ventas WHERE UNIDAD='FARMACIAS'")
-        vd = query_val("SELECT SUM(\"VENTA NETA RECUPERO\") FROM ventas WHERE UNIDAD='DISTRIBUCION DIFARE'")
-        top_f = query("SELECT POS, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD='FARMACIAS' GROUP BY POS ORDER BY v DESC LIMIT 5")
-        top_m = query("SELECT MARCA, SUM(\"VENTA NETA RECUPERO\") as v FROM ventas WHERE UNIDAD!='DIFARE S.A.' GROUP BY MARCA ORDER BY v DESC LIMIT 5")
-        contexto = {
-            "venta_farmacias": round(vf or 0, 2),
-            "venta_distribucion": round(vd or 0, 2),
-            "top_farmacias": {r["POS"]: round(r["v"], 2) for r in top_f},
-            "top_marcas": {r["MARCA"]: round(r["v"], 2) for r in top_m}
-        }
+    try:
+        from agente import campo_pandas
+        contexto = campo_pandas.obtener_contexto_chat(contexto_pos)
+        if contexto.get("error"):
+            return jsonify({"error": contexto["error"]}), 404
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Error preparando contexto: {str(e)[:200]}"}), 500
 
     prompt = f"""Eres ORION, el asistente de inteligencia comercial de Genommalab Ecuador.
 Datos reales DIFARE Ecuador enero-marzo 2026.
