@@ -167,8 +167,23 @@ def analisis_visibilidad(force: bool = False) -> dict:
     # Dos cortes: TODOS los días para venta, ÚLTIMO DÍA para stock
     sap_ultimo = sap_farm[sap_farm["DIA"] == ultimo_dia_str].copy()
 
-    # Contar días con datos para contexto
-    n_dias = sap_farm["DIA"].nunique()
+    # Contar días con datos del MES ACTUAL (mes del último día de stock).
+    # Antes contábamos todos los DIA únicos del SAP, pero el archivo semanal
+    # acumulado puede traer días de meses anteriores → daba "36 días de abril".
+    # Ahora: extraemos YYYY-MM de cada DIA y filtramos por el mismo mes que
+    # ultimo_dia_str para que el número refleje solo el mes en curso.
+    import re as _re
+    def _yyyymm(d):
+        s = _re.sub(r"\D", "", str(d))[:6]
+        return s if len(s) == 6 else None
+    mes_actual_yyyymm = _yyyymm(ultimo_dia_str)
+    if mes_actual_yyyymm:
+        dias_serie = sap_farm["DIA"].dropna().astype(str)
+        mes_serie = dias_serie.map(_yyyymm)
+        dias_del_mes = dias_serie[mes_serie == mes_actual_yyyymm]
+        n_dias = int(dias_del_mes.nunique()) if not dias_del_mes.empty else int(sap_farm["DIA"].nunique())
+    else:
+        n_dias = int(sap_farm["DIA"].nunique())
 
     # ── 1) Análisis POR ELEMENTO ──
     resultados_elementos = []

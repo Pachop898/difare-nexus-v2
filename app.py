@@ -590,9 +590,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <button class="sidebar-item active" data-mod="dashboard" onclick="showModule('dashboard')">
       <span class="si-icon">👤</span><span class="si-label">Mi Cuenta</span>
     </button>
-    <button class="sidebar-item" data-mod="bitacora" onclick="showModule('bitacora')">
-      <span class="si-icon">📋</span><span class="si-label">Bitácora de Juntas</span>
-    </button>
     <button class="sidebar-item" data-mod="presentaciones" onclick="showModule('presentaciones')">
       <span class="si-icon">📑</span><span class="si-label">Presentaciones</span>
     </button>
@@ -603,7 +600,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <span class="si-icon">💡</span><span class="si-label">Oportunidades</span>
     </button>
     <button class="sidebar-item" data-mod="visibilidad" onclick="showModule('visibilidad')">
-      <span class="si-icon">📈</span><span class="si-label">Performance</span>
+      <span class="si-icon">📈</span><span class="si-label">Acuerdos Visibilidad</span>
     </button>
     <button class="sidebar-item" data-mod="configuracion" onclick="showModule('configuracion')">
       <span class="si-icon">⚙️</span><span class="si-label">Configuración</span>
