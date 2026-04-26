@@ -157,15 +157,20 @@ def analisis_visibilidad(force: bool = False) -> dict:
     skus_plan = set(productos["NEPTUNO DIFARE"].astype(str).str.strip().unique())
 
     # Filtrar SAP solo farmacias (excluir DIFARE S.A. = bodega)
-    sap_farm = sap[sap["UNIDAD"] != "DIFARE S.A."].copy()
+    sap_farm_total = sap[sap["UNIDAD"] != "DIFARE S.A."].copy()
 
     # Detectar último día con stock (para foto de stock)
-    dia_stock = sap_farm.groupby("DIA")["STOCK"].sum()
+    dia_stock = sap_farm_total.groupby("DIA")["STOCK"].sum()
     dias_con_stock = dia_stock[dia_stock > 0]
-    ultimo_dia_str = dias_con_stock.index.max() if not dias_con_stock.empty else sap_farm["DIA"].max()
+    ultimo_dia_str = dias_con_stock.index.max() if not dias_con_stock.empty else sap_farm_total["DIA"].max()
 
-    # Dos cortes: TODOS los días para venta, ÚLTIMO DÍA para stock
-    sap_ultimo = sap_farm[sap_farm["DIA"] == ultimo_dia_str].copy()
+    # Foto de stock = solo último día
+    sap_ultimo = sap_farm_total[sap_farm_total["DIA"] == ultimo_dia_str].copy()
+
+    # Para análisis de venta del plan, comparamos APPLES-TO-APPLES dentro del
+    # mes en curso (mes del último día de stock). Esto evita contaminar la
+    # comparación con datos de meses anteriores donde el plan podía no estar
+    # ejecutándose. Ej: si el SAP cubre ene-abril, solo usamos abril para venta.
 
     # Contar días con datos del MES ACTUAL (mes del último día de stock).
     # Antes contábamos todos los DIA únicos del SAP, pero el archivo semanal
@@ -178,12 +183,15 @@ def analisis_visibilidad(force: bool = False) -> dict:
         return s if len(s) == 6 else None
     mes_actual_yyyymm = _yyyymm(ultimo_dia_str)
     if mes_actual_yyyymm:
-        dias_serie = sap_farm["DIA"].dropna().astype(str)
-        mes_serie = dias_serie.map(_yyyymm)
-        dias_del_mes = dias_serie[mes_serie == mes_actual_yyyymm]
-        n_dias = int(dias_del_mes.nunique()) if not dias_del_mes.empty else int(sap_farm["DIA"].nunique())
+        dias_serie = sap_farm_total["DIA"].dropna().astype(str)
+        mes_serie_total = dias_serie.map(_yyyymm)
+        dias_del_mes = dias_serie[mes_serie_total == mes_actual_yyyymm]
+        n_dias = int(dias_del_mes.nunique()) if not dias_del_mes.empty else int(sap_farm_total["DIA"].nunique())
+        # sap_farm = SOLO mes en curso (apples-to-apples para comparar con/sin)
+        sap_farm = sap_farm_total[sap_farm_total["DIA"].astype(str).map(_yyyymm) == mes_actual_yyyymm].copy()
     else:
-        n_dias = int(sap_farm["DIA"].nunique())
+        n_dias = int(sap_farm_total["DIA"].nunique())
+        sap_farm = sap_farm_total
 
     # ── 1) Análisis POR ELEMENTO ──
     resultados_elementos = []
@@ -198,15 +206,16 @@ def analisis_visibilidad(force: bool = False) -> dict:
         if n_pdv_plan == 0:
             continue
 
-        # ── VENTA ACUMULADA (todos los días del SAP) ──
-        sap_skus_all = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_set)]
+        # ── VENTA del MES EN CURSO (apples-to-apples) ──
+        # Solo días del mes del último corte (ej: abril 1-19), no todo el SAP.
+        sap_skus_mes = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_set)]
 
-        # PDVs CON visibilidad — venta acumulada
-        sap_venta_con = sap_skus_all[sap_skus_all["CODIGOPDV"].isin(pdv_con_elem)]
-        # PDVs SIN visibilidad — mismos SKUs, pero NO en ningún plan
-        sap_venta_sin = sap_skus_all[~sap_skus_all["CODIGOPDV"].isin(codigos_plan)]
+        # PDVs CON visibilidad (en este elemento del plan)
+        sap_venta_con = sap_skus_mes[sap_skus_mes["CODIGOPDV"].isin(pdv_con_elem)]
+        # PDVs SIN visibilidad (no están en NINGÚN acuerdo del plan)
+        sap_venta_sin = sap_skus_mes[~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)]
 
-        # Venta acumulada por PDV (sumar todos los días + todos los SKUs)
+        # Venta del mes por PDV (suma todos los días del mes + SKUs)
         venta_con = sap_venta_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
         venta_sin = sap_venta_sin.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
 
@@ -214,27 +223,13 @@ def analisis_visibilidad(force: bool = False) -> dict:
         venta_prom_sin = float(venta_sin.mean()) if len(venta_sin) > 0 else 0
         venta_total_con = float(venta_con.sum())
 
-        # Lift %
+        # Lift % = uplift de PDVs con visibilidad vs PDVs sin visibilidad (mismo período)
         lift = round((venta_prom_con / venta_prom_sin - 1) * 100, 1) if venta_prom_sin > 0 else 0
 
-        # ── STOCK del último día ──
-        sap_skus_stock = sap_ultimo[sap_ultimo["IDNEPTUNO"].isin(skus_set)]
-        sap_stock_con = sap_skus_stock[sap_skus_stock["CODIGOPDV"].isin(pdv_con_elem)]
-
-        stock_con = sap_stock_con.groupby("CODIGOPDV")["STOCK"].sum()
-        pdv_con_stock = set(stock_con[stock_con > 0].index)
-        pdv_sin_stock = pdv_con_elem - pdv_con_stock
-
-        # Cobertura: PDVs con stock>0 O venta>0 (acumulada)
-        pdv_con_presencia = set(stock_con[stock_con > 0].index) | \
-                            set(venta_con[venta_con > 0].index)
-        cobertura_pct = round(len(pdv_con_presencia) / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
-
-        # Stock buckets (último día, por PDV, total de SKUs del elemento)
-        stock_0 = len(pdv_con_elem - set(stock_con[stock_con > 0].index))
-        stock_1 = len(stock_con[(stock_con >= 1) & (stock_con <= 1)])
-        stock_2 = len(stock_con[(stock_con >= 2) & (stock_con <= 2)])
-        stock_3plus = len(stock_con[stock_con >= 3])
+        # ── COBERTURA = % de PDVs del plan que VENDIERON en el mes ──
+        # Antes mezclaba "tiene stock" o "vendió"; ahora solo cuenta venta real.
+        pdv_que_vendieron = set(venta_con[venta_con > 0].index)
+        cobertura_pct = round(len(pdv_que_vendieron) / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
 
         # Determinar acuerdo(s) para este elemento
         acuerdos = pdv_plan[pdv_plan["Elemento"] == elemento]["Acuerdo"].unique()
@@ -245,15 +240,17 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "acuerdo": acuerdo_str,
             "n_pdv_plan": n_pdv_plan,
             "n_skus": len(skus_set),
+            "n_pdv_con_venta": len(pdv_que_vendieron),
             "venta_total": round(venta_total_con, 2),
             "venta_prom_con": round(venta_prom_con, 2),
             "venta_prom_sin": round(venta_prom_sin, 2),
             "lift_pct": lift,
             "cobertura_pct": cobertura_pct,
-            "stock_0": stock_0,
-            "stock_1": stock_1,
-            "stock_2": stock_2,
-            "stock_3plus": stock_3plus,
+            # placeholders por compatibilidad (frontend ya no los muestra)
+            "stock_0": 0,
+            "stock_1": 0,
+            "stock_2": 0,
+            "stock_3plus": 0,
             "pdv_con_stock": len(pdv_con_stock),
             "pdv_sin_stock": len(pdv_sin_stock),
         })
@@ -261,10 +258,10 @@ def analisis_visibilidad(force: bool = False) -> dict:
     # Ordenar por venta total desc
     resultados_elementos.sort(key=lambda x: x["venta_total"], reverse=True)
 
-    # ── 2) KPIs globales (venta acumulada todos los días) ──
+    # ── 2) KPIs globales (venta del MES EN CURSO, mismo criterio que filas) ──
     total_pdv_plan = len(codigos_plan)
 
-    # Venta acumulada global
+    # Venta del mes — sap_farm ya está filtrado al mes en curso
     sap_skus_all_global = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_plan)]
     sap_con_all = sap_skus_all_global[sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
     sap_sin_all = sap_skus_all_global[~sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
@@ -282,10 +279,10 @@ def analisis_visibilidad(force: bool = False) -> dict:
     stock_global = sap_stock_con_global.groupby("CODIGOPDV")["STOCK"].sum()
     pdv_con_stock_global = len(stock_global[stock_global > 0])
 
-    # Cobertura global
-    pdv_con_presencia_global = set(stock_global[stock_global > 0].index) | \
-                                set(venta_con_all[venta_con_all > 0].index)
-    cobertura_global = round(len(pdv_con_presencia_global) / total_pdv_plan * 100, 1) if total_pdv_plan > 0 else 0
+    # Cobertura global = % de PDVs del plan que VENDIERON en el mes en curso
+    # (mismo criterio que por elemento — solo venta real, no stock).
+    pdv_que_vendieron_global = set(venta_con_all[venta_con_all > 0].index)
+    cobertura_global = round(len(pdv_que_vendieron_global) / total_pdv_plan * 100, 1) if total_pdv_plan > 0 else 0
 
     # Parsear fecha del último día
     from agente.generar_pdfs import parsear_fecha_completa
