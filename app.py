@@ -1022,10 +1022,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     }
     /* ── Sticky columns for TP table ── */
     .dash-table th.sticky-col, .dash-table td.sticky-col{position:sticky;z-index:2;background:inherit}
-    .dash-table th.sticky-col-1, .dash-table td.sticky-col-1{left:0;min-width:70px;max-width:90px}
-    .dash-table th.sticky-col-2, .dash-table td.sticky-col-2{left:70px;min-width:110px;max-width:160px;border-right:2px solid var(--border)}
-    .dash-table thead th.sticky-col{background:var(--blue)!important;z-index:3}
-    .dash-table tbody td.sticky-col{background:var(--navy2)}
+    .dash-table th.sticky-col-1, .dash-table td.sticky-col-1{left:0;min-width:90px;max-width:110px}
+    .dash-table th.sticky-col-2, .dash-table td.sticky-col-2{left:90px;min-width:240px;max-width:280px;border-right:2px solid var(--border);white-space:normal;word-break:break-word;line-height:1.3}
+    /* THEAD sticky a top + sticky-col también sticky a left → necesitan top:0
+       y z-index alto para que queden por encima de las celdas tbody al scrollear. */
+    .dash-table thead th.sticky-col{background:var(--blue)!important;top:0;z-index:5}
+    .dash-table thead th{position:sticky;top:0;z-index:4;background:var(--blue)}
+    .dash-table tbody td.sticky-col{background:var(--navy2);z-index:1}
   </style>
   <section class="card p-4" id="filtros-bar">
     <div class="flex flex-wrap items-center gap-3">
@@ -1958,14 +1961,63 @@ function _actualizarProductosTP(){
 }
 
 let _filtrosYaCargados=false;
+let _filtrosReintentoEnCurso=false;
+// Si los filtros no cargaron en el flujo principal, polling en background:
+// cada 10s revisa /api/ready, y cuando esté listo intenta una vez más.
+async function _reintentarFiltrosCuandoReady(){
+  if(_filtrosReintentoEnCurso || _filtrosYaCargados) return;
+  _filtrosReintentoEnCurso=true;
+  console.log("[filtros] esperando que el servidor termine de cargar para reintentar…");
+  for(let i=0;i<60;i++){ // hasta 10 minutos
+    await new Promise(r=>setTimeout(r,10000));
+    if(_filtrosYaCargados) break;
+    try{
+      const r=await fetch(S+"/api/ready",{signal:AbortSignal.timeout(5000)});
+      const d=await r.json();
+      if(d.ready){
+        console.log("[filtros] servidor listo, recargando filtros…");
+        await cargarFiltros();
+        break;
+      }
+    }catch(e){}
+  }
+  _filtrosReintentoEnCurso=false;
+}
+// Wrapper que reintenta /api/filtros con timeout largo. Cold start de Railway
+// puede demorar >90s leyendo Excels; el timeout default mata la primera llamada
+// y dejaba los filtros vacíos para siempre.
+async function _fetchFiltrosConRetry(maxIntentos=3){
+  for(let i=1;i<=maxIntentos;i++){
+    try{
+      // 180s timeout — cubre cold start + procesamiento de filtros_disponibles
+      const d=await api("/api/filtros",180000);
+      if(d && !d.error) return d;
+      if(d && d.error) console.warn(`[filtros] intento ${i} backend error:`,d.error);
+      else console.warn(`[filtros] intento ${i} respuesta vacía`);
+    }catch(e){
+      console.warn(`[filtros] intento ${i} falló:`,e.message||e);
+    }
+    if(i<maxIntentos){
+      await new Promise(r=>setTimeout(r,3000*i)); // backoff: 3s, 6s
+    }
+  }
+  return null;
+}
 async function cargarFiltros(){
-  if(_filtrosYaCargados) return; // evitar duplicar opciones en retries
-  let d=null;
-  try{
-    d=await api("/api/filtros");
-  }catch(e){console.error("[filtros] api/filtros THREW:",e);}
-  if(!d){console.warn("[filtros] respuesta vacía/null"); return;}
-  if(d.error){console.error("[filtros] backend respondió error:",d.error); return;}
+  if(_filtrosYaCargados) return;
+  const d=await _fetchFiltrosConRetry(3);
+  if(!d){
+    console.error("[filtros] no se pudo cargar tras 3 intentos");
+    // Programar reintento en background cuando el servidor esté ready,
+    // para que el usuario eventualmente vea los filtros sin tener que refrescar.
+    _reintentarFiltrosCuandoReady();
+    return;
+  }
+  if(d.error){
+    console.error("[filtros] backend respondió error:",d.error);
+    _reintentarFiltrosCuandoReady();
+    return;
+  }
   console.log("[filtros] payload recibido:",
     {marcas:(d.marcas||[]).length, canales:(d.canales||[]).length,
      grupos:(d.grupos||[]).length, productos:(d.productos||[]).length});
@@ -2250,9 +2302,10 @@ async function cargarTP(){
       const d4=f.DOI_GT60||0;
       const isP=f.es_pareto;
       const bg=isP?'background:rgba(212,175,55,0.08);':'';
+      const prodFull=(f.PRODUCTO||"—");
       return `<tr class="row" style="border-bottom:1px solid var(--border);${bg}">
-        <td class="px-2 py-1.5 font-medium sticky-col sticky-col-1" style="color:var(--gold);${bg}">${isP?'★ ':''}${f.MARCA||"—"}</td>
-        <td class="px-2 py-1.5 sticky-col sticky-col-2" style="color:var(--white);${bg}">${(f.PRODUCTO||"—").substring(0,30)}</td>
+        <td class="px-2 py-1.5 font-medium sticky-col sticky-col-1" style="color:var(--gold);${bg}" title="${(f.MARCA||"—").replace(/"/g,'&quot;')}">${isP?'★ ':''}${f.MARCA||"—"}</td>
+        <td class="px-2 py-1.5 sticky-col sticky-col-2" style="color:var(--white);${bg}" title="${prodFull.replace(/"/g,'&quot;')}">${prodFull}</td>
         <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(v)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${pct}%</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${acum}%</td>
