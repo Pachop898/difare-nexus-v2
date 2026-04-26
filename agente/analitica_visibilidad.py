@@ -208,14 +208,30 @@ def analisis_visibilidad(force: bool = False) -> dict:
         if n_pdv_plan == 0:
             continue
 
-        # ── VENTA del MES EN CURSO (apples-to-apples) ──
-        # Solo días del mes del último corte (ej: abril 1-19), no todo el SAP.
+        # ── VENTA del MES EN CURSO (apples-to-apples por canal) ──
+        # Solo días del mes del último corte (ej: abril 1-19).
         sap_skus_mes = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_set)]
 
         # PDVs CON visibilidad (en este elemento del plan)
         sap_venta_con = sap_skus_mes[sap_skus_mes["CODIGOPDV"].isin(pdv_con_elem)]
-        # PDVs SIN visibilidad (no están en NINGÚN acuerdo del plan)
-        sap_venta_sin = sap_skus_mes[~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)]
+
+        # Identificar GRUPOPDV de los CON para matchear contra SIN del mismo
+        # canal/cadena (Pharmacys vs Pharmacys, Cruz Azul vs Cruz Azul, etc).
+        # Esto evita comparar contra el mercado completo donde puede haber
+        # farmacias muy diferentes en tamaño/canal.
+        if "GRUPOPDV" in sap_venta_con.columns:
+            grupos_con = set(sap_venta_con["GRUPOPDV"].dropna().astype(str).unique())
+        else:
+            grupos_con = set()
+
+        # PDVs SIN visibilidad (no están en NINGÚN plan) Y mismo GRUPOPDV
+        if grupos_con and "GRUPOPDV" in sap_skus_mes.columns:
+            sap_venta_sin = sap_skus_mes[
+                (~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)) &
+                (sap_skus_mes["GRUPOPDV"].astype(str).isin(grupos_con))
+            ]
+        else:
+            sap_venta_sin = sap_skus_mes[~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)]
 
         # Venta del mes por PDV (suma todos los días del mes + SKUs)
         venta_con = sap_venta_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
@@ -225,11 +241,10 @@ def analisis_visibilidad(force: bool = False) -> dict:
         venta_prom_sin = float(venta_sin.mean()) if len(venta_sin) > 0 else 0
         venta_total_con = float(venta_con.sum())
 
-        # Lift % = uplift de PDVs con visibilidad vs PDVs sin visibilidad (mismo período)
+        # Lift % = uplift CON vs SIN visibilidad (mismo periodo, mismo canal)
         lift = round((venta_prom_con / venta_prom_sin - 1) * 100, 1) if venta_prom_sin > 0 else 0
 
-        # ── COBERTURA = % de PDVs del plan que VENDIERON en el mes ──
-        # Antes mezclaba "tiene stock" o "vendió"; ahora solo cuenta venta real.
+        # COBERTURA = % de PDVs del plan que VENDIERON en el mes
         pdv_que_vendieron = set(venta_con[venta_con > 0].index)
         cobertura_pct = round(len(pdv_que_vendieron) / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
 
@@ -243,6 +258,7 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "n_pdv_plan": n_pdv_plan,
             "n_skus": len(skus_set),
             "n_pdv_con_venta": len(pdv_que_vendieron),
+            "n_pdv_sin_comparados": int(len(venta_sin)),
             "venta_total": round(venta_total_con, 2),
             "venta_prom_con": round(venta_prom_con, 2),
             "venta_prom_sin": round(venta_prom_sin, 2),
@@ -259,7 +275,17 @@ def analisis_visibilidad(force: bool = False) -> dict:
     # Venta del mes — sap_farm ya está filtrado al mes en curso
     sap_skus_all_global = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_plan)]
     sap_con_all = sap_skus_all_global[sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
-    sap_sin_all = sap_skus_all_global[~sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
+
+    # Para SIN global: matchear por GRUPOPDV — solo contra cadenas donde sí
+    # tenemos visibilidad (no comparar contra mercado total).
+    if "GRUPOPDV" in sap_con_all.columns:
+        grupos_con_global = set(sap_con_all["GRUPOPDV"].dropna().astype(str).unique())
+        sap_sin_all = sap_skus_all_global[
+            (~sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)) &
+            (sap_skus_all_global["GRUPOPDV"].astype(str).isin(grupos_con_global))
+        ]
+    else:
+        sap_sin_all = sap_skus_all_global[~sap_skus_all_global["CODIGOPDV"].isin(codigos_plan)]
 
     venta_con_all = sap_con_all.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
     venta_sin_all = sap_sin_all.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()

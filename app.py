@@ -1024,13 +1024,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           <th class="px-2 py-2 text-center" style="color:var(--gold)" title="PDVs del plan que vendieron en el mes en curso">PDVs c/Venta</th>
           <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Venta acumulada del mes en curso (solo PDVs con visibilidad)">Venta Mes</th>
           <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta del mes por PDV CON visibilidad">$/PDV Con</th>
-          <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta del mes por PDV SIN visibilidad (mismos SKUs, comparación apples-to-apples)">$/PDV Sin</th>
+          <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta del mes por PDV SIN visibilidad — solo PDVs del MISMO grupo/cadena (apples-to-apples)">$/PDV Sin</th>
+          <th class="px-2 py-2 text-center" style="color:var(--muted)" title="Cantidad de PDVs SIN visibilidad usados para el promedio (mismo grupo que los CON)">PDVs Sin</th>
           <th class="px-2 py-2 text-center" style="color:var(--gold)" title="Lift = uplift porcentual del CON vs SIN visibilidad">Lift %</th>
           <th class="px-2 py-2 text-center" style="color:var(--gold)" title="% de PDVs del plan que vendieron en el mes (mide ejecución del acuerdo)">% Cobertura</th>
         </tr>
       </thead>
       <tbody id="vis-body">
-        <tr><td colspan="10" class="text-center py-6" style="color:var(--muted)">Cargando plan de visibilidad...</td></tr>
+        <tr><td colspan="11" class="text-center py-6" style="color:var(--muted)">Cargando plan de visibilidad...</td></tr>
       </tbody>
     </table>
   </div>
@@ -2278,6 +2279,7 @@ async function cargarVisibilidad(){
         <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(e.venta_total)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(e.venta_prom_con)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(e.venta_prom_sin)}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${e.n_pdv_sin_comparados||0}</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:${lc}">${e.lift_pct>0?"+":""}${e.lift_pct}%</td>
         <td class="px-2 py-1.5 text-center" style="color:${e.cobertura_pct>=90?'#10b981':e.cobertura_pct>=70?'#f59e0b':'#ef4444'}">${e.cobertura_pct}%</td>
       </tr>`;
