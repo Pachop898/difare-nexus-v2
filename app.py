@@ -1248,8 +1248,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">%Cob</th>
               <th class="text-center px-2 py-2" title="PDVs con venta en último mes completo">#PDV<br>con Venta</th>
               <th class="text-center px-2 py-2">%Pon</th>
-              <th class="text-center px-2 py-2" title="PDVs proyectados con venta al cierre del mes en curso (extrapolando los días corridos)">PDV mes<br>actual (proy)</th>
-              <th class="text-center px-2 py-2" title="Variación proyectada de PDVs vs último mes completo (verde = creciendo en cobertura)">Tend %</th>
+              <th class="text-center px-2 py-2" title="PDVs únicos que ya reportaron venta en el mes en curso (acumulado al día corte del SAP)">PDV mes<br>actual</th>
+              <th class="text-center px-2 py-2" title="% del total de PDVs del mes anterior ya alcanzado este mes. >= 100% significa que ya superaste la cobertura del mes anterior con días aún por correr.">% vs mes<br>anterior</th>
               <th class="text-right px-2 py-2" style="color:#10b981" title="Venta estimada si la presencia llegara al universo (venta_actual × universo / presencia)">$ Potencial</th>
               <th class="text-right px-2 py-2" style="color:#10b981" title="$ Potencial menos venta actual = lo que ganarías al cerrar el gap de cobertura">$ Uplift</th>
             </tr>
@@ -2150,9 +2150,11 @@ async function cargarOpVectorizacion(){
     if(!items.length){body.innerHTML='<tr><td colspan="12" class="text-center py-6" style="color:var(--muted)">No hay SKUs con %Pon ≥ 80%</td></tr>';return;}
     body.innerHTML=items.map(x=>{
       const cob=x.cobertura_pct||0, pon=x.ponderada_pct||0;
-      const tend=x.tendencia_pct;
-      const tendCol = tend===null?'var(--muted)':(tend>=0?'#10b981':'#ef4444');
-      const tendTxt = tend===null?'—':(tend>0?'+':'')+tend+'%';
+      const av=x.avance_vs_mes_ant_pct;
+      // Semáforo de avance: verde si ya alcanzaste >=80% del mes anterior con
+      // los días que llevas; ámbar 50-79%; rojo <50%.
+      const avCol = av===null?'var(--muted)':(av>=80?'#10b981':av>=50?'#f59e0b':'#ef4444');
+      const avTxt = av===null?'—':av+'%';
       return `<tr style="border-bottom:1px solid var(--border)">
         <td class="px-2 py-1.5" style="color:var(--gold)">${x.MARCA||"—"}</td>
         <td class="px-2 py-1.5" style="color:var(--white)" title="${(x.PRODUCTO||"").replace(/"/g,'&quot;')}">${x.PRODUCTO||"—"}</td>
@@ -2162,8 +2164,8 @@ async function cargarOpVectorizacion(){
         <td class="px-2 py-1.5 text-center" style="color:${cob>=90?'#10b981':cob>=70?'#f59e0b':'#ef4444'}">${cob}%</td>
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_VENTA_ULT_MES||0}</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:${pon>=80?'#10b981':'#f59e0b'}">${pon}%</td>
-        <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${x.PDV_VENTA_ACTUAL_PROY||0}</td>
-        <td class="px-2 py-1.5 text-center font-bold" style="color:${tendCol}">${tendTxt}</td>
+        <td class="px-2 py-1.5 text-center" style="color:var(--white)">${x.PDV_VENTA_ACTUAL_ACUM||0}</td>
+        <td class="px-2 py-1.5 text-center font-bold" style="color:${avCol}">${avTxt}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--white)">${fmtUSD(x.VENTA_POTENCIAL)}</td>
         <td class="px-2 py-1.5 text-right font-bold" style="color:#10b981">${fmtUSD(x.UPLIFT)}</td>
       </tr>`;

@@ -152,17 +152,16 @@ def ampliar_vectorizacion(min_pon_pct: float = 80.0,
         if pon_pct < min_pon_pct:
             continue
 
-        # Tendencia mes en curso vs último mes completo
+        # PDVs con venta acumulados en el mes EN CURSO (sin proyectar — un PDV
+        # puede comprar varios días, así que extrapolar PDVs únicos linealmente
+        # da números mayores al universo). Mostramos el conteo real y un % de
+        # avance contra el mes anterior completo.
         idn = r.get("IDNEPTUNO", "")
         pdv_actual_acum = int(pdv_venta_actual.get(idn, 0))
-        if dias_corridos > 0 and dias_total_mes > 0:
-            pdv_actual_proy = round(pdv_actual_acum / dias_corridos * dias_total_mes)
-        else:
-            pdv_actual_proy = pdv_actual_acum
         if pdv_v_ult > 0:
-            tendencia_pct = round((pdv_actual_proy / pdv_v_ult - 1) * 100, 1)
+            avance_vs_mes_ant_pct = round(pdv_actual_acum / pdv_v_ult * 100, 1)
         else:
-            tendencia_pct = None
+            avance_vs_mes_ant_pct = None
 
         # Venta potencial si presencia llegara al universo (proporcional al
         # ratio universo/presencia, aplicado a venta_total).
@@ -184,8 +183,7 @@ def ampliar_vectorizacion(min_pon_pct: float = 80.0,
             "PDV_VENTA_ULT_MES": pdv_v_ult,
             "ponderada_pct": pon_pct,
             "PDV_VENTA_ACTUAL_ACUM": pdv_actual_acum,
-            "PDV_VENTA_ACTUAL_PROY": pdv_actual_proy,
-            "tendencia_pct": tendencia_pct,
+            "avance_vs_mes_ant_pct": avance_vs_mes_ant_pct,
             "VENTA_POTENCIAL": venta_potencial,
             "UPLIFT": uplift,
         })
