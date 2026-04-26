@@ -183,12 +183,14 @@ def analisis_visibilidad(force: bool = False) -> dict:
         return s if len(s) == 6 else None
     mes_actual_yyyymm = _yyyymm(ultimo_dia_str)
     if mes_actual_yyyymm:
-        dias_serie = sap_farm_total["DIA"].dropna().astype(str)
-        mes_serie_total = dias_serie.map(_yyyymm)
-        dias_del_mes = dias_serie[mes_serie_total == mes_actual_yyyymm]
+        # Vectorizado con pandas .str.* — mucho más rápido que .map() sobre
+        # cientos de miles de filas del SAP. Antes daba timeout en cold start.
+        dia_str = sap_farm_total["DIA"].astype(str)
+        yyyymm_serie = dia_str.str.replace(r"\D", "", regex=True).str[:6]
+        mask_mes = yyyymm_serie == mes_actual_yyyymm
+        dias_del_mes = dia_str[mask_mes]
         n_dias = int(dias_del_mes.nunique()) if not dias_del_mes.empty else int(sap_farm_total["DIA"].nunique())
-        # sap_farm = SOLO mes en curso (apples-to-apples para comparar con/sin)
-        sap_farm = sap_farm_total[sap_farm_total["DIA"].astype(str).map(_yyyymm) == mes_actual_yyyymm].copy()
+        sap_farm = sap_farm_total[mask_mes].copy()
     else:
         n_dias = int(sap_farm_total["DIA"].nunique())
         sap_farm = sap_farm_total
