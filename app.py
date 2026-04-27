@@ -1024,9 +1024,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           <th class="px-2 py-2 text-center" style="color:var(--gold)" title="PDVs del plan que vendieron en el mes en curso">PDVs c/Venta</th>
           <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Venta acumulada del mes en curso (solo PDVs con visibilidad)">Venta Mes</th>
           <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta del mes por PDV CON visibilidad">$/PDV Con</th>
-          <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta del mes por PDV SIN visibilidad — solo PDVs del MISMO grupo/cadena (apples-to-apples)">$/PDV Sin</th>
-          <th class="px-2 py-2 text-center" style="color:var(--muted)" title="Cantidad de PDVs SIN visibilidad usados para el promedio (mismo grupo que los CON)">PDVs Sin</th>
-          <th class="px-2 py-2 text-center" style="color:var(--gold)" title="Lift = uplift porcentual del CON vs SIN visibilidad">Lift %</th>
+          <th class="px-2 py-2 text-right" style="color:var(--gold)" title="Promedio de venta vs grupo control. Si hay PDVs sin visibilidad en el mismo grupo, compara con N=N_CON (top venta). Si todos los PDVs del grupo están en el plan, compara contra los mismos PDVs en el mes anterior (mismo rango de días).">$/PDV Sin</th>
+          <th class="px-2 py-2 text-center" style="color:var(--muted)" title="Cantidad de PDVs usados como control (sin visibilidad o mes anterior según método)">PDVs Sin</th>
+          <th class="px-2 py-2 text-center" style="color:var(--gold)" title="Lift = uplift porcentual del CON vs control">Lift %</th>
           <th class="px-2 py-2 text-center" style="color:var(--gold)" title="% de PDVs del plan que vendieron en el mes (mide ejecución del acuerdo)">% Cobertura</th>
         </tr>
       </thead>
@@ -2270,6 +2270,11 @@ async function cargarVisibilidad(){
     if(!elems.length){body.innerHTML='<tr><td colspan="13" class="text-center py-4" style="color:var(--muted)">Sin datos de visibilidad</td></tr>';return;}
     body.innerHTML=elems.map(e=>{
       const lc=e.lift_pct>0?"#10b981":e.lift_pct<0?"#ef4444":"var(--muted)";
+      const metBadge = e.metodo_comparacion==='temporal'
+        ? '<span style="background:#8b5cf6;color:var(--navy);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:4px" title="Comparación temporal: vs mismos PDVs en mes anterior (todos del grupo están en el plan)">vs Mes Ant</span>'
+        : (e.metodo_comparacion==='spatial'
+            ? '<span style="background:#3b82f6;color:var(--navy);font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:4px" title="Comparación espacial: vs N PDVs sin visibilidad en el mismo grupo">vs SIN</span>'
+            : '<span style="background:var(--muted);color:var(--navy);font-size:9px;padding:1px 5px;border-radius:4px;margin-left:4px">s/control</span>');
       return `<tr style="border-bottom:1px solid var(--border)">
         <td class="px-2 py-1.5 font-medium" style="color:var(--white)">${e.elemento}</td>
         <td class="px-2 py-1.5" style="color:var(--muted);font-size:11px">${e.acuerdo}</td>
@@ -2278,7 +2283,7 @@ async function cargarVisibilidad(){
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${e.n_pdv_con_venta||0}</td>
         <td class="px-2 py-1.5 text-right font-medium" style="color:var(--gold)">${fmtUSD(e.venta_total)}</td>
         <td class="px-2 py-1.5 text-right" style="color:var(--gold)">${fmtUSD(e.venta_prom_con)}</td>
-        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(e.venta_prom_sin)}</td>
+        <td class="px-2 py-1.5 text-right" style="color:var(--muted)">${fmtUSD(e.venta_prom_sin)}${metBadge}</td>
         <td class="px-2 py-1.5 text-center" style="color:var(--muted)">${e.n_pdv_sin_comparados||0}</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:${lc}">${e.lift_pct>0?"+":""}${e.lift_pct}%</td>
         <td class="px-2 py-1.5 text-center" style="color:${e.cobertura_pct>=90?'#10b981':e.cobertura_pct>=70?'#f59e0b':'#ef4444'}">${e.cobertura_pct}%</td>

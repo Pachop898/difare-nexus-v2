@@ -181,19 +181,42 @@ def analisis_visibilidad(force: bool = False) -> dict:
     def _yyyymm(d):
         s = _re.sub(r"\D", "", str(d))[:6]
         return s if len(s) == 6 else None
+    def _mes_anterior(yyyymm):
+        if not yyyymm or len(yyyymm) != 6:
+            return None
+        y, m = int(yyyymm[:4]), int(yyyymm[4:6])
+        if m == 1:
+            return f"{y-1:04d}12"
+        return f"{y:04d}{m-1:02d}"
+
     mes_actual_yyyymm = _yyyymm(ultimo_dia_str)
+    mes_anterior_yyyymm = _mes_anterior(mes_actual_yyyymm)
+    # Día de corte del mes actual (ej: 19 si SAP llega al 19 de abril)
+    max_dia_str = _re.sub(r"\D", "", str(ultimo_dia_str))
+    dia_corte = int(max_dia_str[6:8]) if len(max_dia_str) >= 8 else 0
+
+    # Vectorizar el cálculo de YYYYMM y DD para todo el SAP una sola vez
+    dia_norm_serie = sap_farm_total["DIA"].astype(str).str.replace(r"\D", "", regex=True)
+    yyyymm_serie = dia_norm_serie.str[:6]
+    dd_serie = dia_norm_serie.str[6:8]
+
     if mes_actual_yyyymm:
-        # Vectorizado con pandas .str.* — mucho más rápido que .map() sobre
-        # cientos de miles de filas del SAP. Antes daba timeout en cold start.
-        dia_str = sap_farm_total["DIA"].astype(str)
-        yyyymm_serie = dia_str.str.replace(r"\D", "", regex=True).str[:6]
         mask_mes = yyyymm_serie == mes_actual_yyyymm
-        dias_del_mes = dia_str[mask_mes]
-        n_dias = int(dias_del_mes.nunique()) if not dias_del_mes.empty else int(sap_farm_total["DIA"].nunique())
+        n_dias = int(sap_farm_total.loc[mask_mes, "DIA"].nunique())
         sap_farm = sap_farm_total[mask_mes].copy()
+        # SAP del mismo rango de días (1..dia_corte) del mes anterior
+        # Sirve para comparación temporal cuando todos los PDVs están en el plan.
+        if mes_anterior_yyyymm and dia_corte > 0:
+            mask_mes_ant_rango = (yyyymm_serie == mes_anterior_yyyymm) & \
+                                 (dd_serie.fillna("00").astype(str).str.zfill(2) <= f"{dia_corte:02d}") & \
+                                 (dd_serie.str.len() == 2)
+            sap_mes_ant_rango = sap_farm_total[mask_mes_ant_rango].copy()
+        else:
+            sap_mes_ant_rango = pd.DataFrame()
     else:
         n_dias = int(sap_farm_total["DIA"].nunique())
         sap_farm = sap_farm_total
+        sap_mes_ant_rango = pd.DataFrame()
 
     # ── 1) Análisis POR ELEMENTO ──
     resultados_elementos = []
@@ -208,47 +231,70 @@ def analisis_visibilidad(force: bool = False) -> dict:
         if n_pdv_plan == 0:
             continue
 
-        # ── VENTA del MES EN CURSO (apples-to-apples por canal) ──
-        # Solo días del mes del último corte (ej: abril 1-19).
+        # ── VENTA del MES EN CURSO (apples-to-apples) ──
         sap_skus_mes = sap_farm[sap_farm["IDNEPTUNO"].isin(skus_set)]
 
         # PDVs CON visibilidad (en este elemento del plan)
         sap_venta_con = sap_skus_mes[sap_skus_mes["CODIGOPDV"].isin(pdv_con_elem)]
 
-        # Identificar GRUPOPDV de los CON para matchear contra SIN del mismo
-        # canal/cadena (Pharmacys vs Pharmacys, Cruz Azul vs Cruz Azul, etc).
-        # Esto evita comparar contra el mercado completo donde puede haber
-        # farmacias muy diferentes en tamaño/canal.
+        # GRUPOPDV de los CON — para matchear SIN del mismo canal
         if "GRUPOPDV" in sap_venta_con.columns:
             grupos_con = set(sap_venta_con["GRUPOPDV"].dropna().astype(str).unique())
         else:
             grupos_con = set()
 
-        # PDVs SIN visibilidad (no están en NINGÚN plan) Y mismo GRUPOPDV
+        # PDVs SIN visibilidad disponibles (no en ningún plan, mismo GRUPOPDV)
         if grupos_con and "GRUPOPDV" in sap_skus_mes.columns:
-            sap_venta_sin = sap_skus_mes[
+            sap_sin_disponibles = sap_skus_mes[
                 (~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)) &
                 (sap_skus_mes["GRUPOPDV"].astype(str).isin(grupos_con))
             ]
         else:
-            sap_venta_sin = sap_skus_mes[~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)]
+            sap_sin_disponibles = sap_skus_mes[~sap_skus_mes["CODIGOPDV"].isin(codigos_plan)]
 
-        # Venta del mes por PDV (suma todos los días del mes + SKUs)
         venta_con = sap_venta_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
-        venta_sin = sap_venta_sin.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
-
-        venta_prom_con = float(venta_con.mean()) if len(venta_con) > 0 else 0
-        venta_prom_sin = float(venta_sin.mean()) if len(venta_sin) > 0 else 0
+        pdv_que_vendieron = set(venta_con[venta_con > 0].index)
+        venta_prom_con = float(venta_con[venta_con > 0].mean()) if len(pdv_que_vendieron) > 0 else 0
         venta_total_con = float(venta_con.sum())
 
-        # Lift % = uplift CON vs SIN visibilidad (mismo periodo, mismo canal)
+        # Decisión de método de comparación:
+        #   - SPATIAL: si hay PDVs SIN en el mismo grupo → comparar N CON vs N SIN
+        #   - TEMPORAL: si todos los PDVs del grupo están en el plan → comparar
+        #     mismos PDVs CON en este mes vs los mismos PDVs en mes anterior
+        venta_sin_grupo = sap_sin_disponibles.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+        venta_sin_grupo = venta_sin_grupo[venta_sin_grupo > 0]
+        n_con_vendieron = len(pdv_que_vendieron)
+
+        if len(venta_sin_grupo) >= max(1, int(n_con_vendieron * 0.3)):
+            # SPATIAL: tomar N=n_con_vendieron PDVs SIN del mismo grupo,
+            # ordenados por venta DESC (compara contra los mejores
+            # competidores sin visibilidad en el mismo canal — más exigente).
+            n_target = max(1, n_con_vendieron)
+            venta_sin_match = venta_sin_grupo.nlargest(n_target)
+            venta_prom_sin = float(venta_sin_match.mean()) if len(venta_sin_match) > 0 else 0
+            n_sin_usados = int(len(venta_sin_match))
+            metodo = "spatial"
+        elif not sap_mes_ant_rango.empty:
+            # TEMPORAL: mismos CON, mes anterior, mismo rango de días
+            sap_skus_ant = sap_mes_ant_rango[sap_mes_ant_rango["IDNEPTUNO"].isin(skus_set)]
+            sap_con_ant = sap_skus_ant[sap_skus_ant["CODIGOPDV"].isin(pdv_con_elem)]
+            venta_con_ant = sap_con_ant.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+            venta_con_ant_pos = venta_con_ant[venta_con_ant > 0]
+            venta_prom_sin = float(venta_con_ant_pos.mean()) if len(venta_con_ant_pos) > 0 else 0
+            n_sin_usados = int(len(venta_con_ant_pos))
+            metodo = "temporal"
+        else:
+            venta_prom_sin = 0
+            n_sin_usados = 0
+            metodo = "none"
+
+        # Lift %
         lift = round((venta_prom_con / venta_prom_sin - 1) * 100, 1) if venta_prom_sin > 0 else 0
 
         # COBERTURA = % de PDVs del plan que VENDIERON en el mes
-        pdv_que_vendieron = set(venta_con[venta_con > 0].index)
-        cobertura_pct = round(len(pdv_que_vendieron) / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
+        cobertura_pct = round(n_con_vendieron / n_pdv_plan * 100, 1) if n_pdv_plan > 0 else 0
 
-        # Determinar acuerdo(s) para este elemento
+        # Acuerdo(s)
         acuerdos = pdv_plan[pdv_plan["Elemento"] == elemento]["Acuerdo"].unique()
         acuerdo_str = ", ".join(acuerdos)
 
@@ -257,13 +303,14 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "acuerdo": acuerdo_str,
             "n_pdv_plan": n_pdv_plan,
             "n_skus": len(skus_set),
-            "n_pdv_con_venta": len(pdv_que_vendieron),
-            "n_pdv_sin_comparados": int(len(venta_sin)),
+            "n_pdv_con_venta": n_con_vendieron,
+            "n_pdv_sin_comparados": n_sin_usados,
             "venta_total": round(venta_total_con, 2),
             "venta_prom_con": round(venta_prom_con, 2),
             "venta_prom_sin": round(venta_prom_sin, 2),
             "lift_pct": lift,
             "cobertura_pct": cobertura_pct,
+            "metodo_comparacion": metodo,
         })
 
     # Ordenar por venta total desc
