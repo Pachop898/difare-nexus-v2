@@ -260,28 +260,40 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
         items = venta_prod[venta_prod["venta_total"] > 0].copy()
 
     # ── PDVs con venta en el último mes completo — por producto ──
-    # Se usa para el %Pon (ponderada) = PDV con venta último mes / PDV presencia
-    # IMPORTANTE: df_farm_todos también contiene datos del SAP semanal, que
-    # aporta datos parciales del mes en curso (p.ej. al 19 de abril). Si
-    # usamos directamente el mes máximo en meses_ord, tomamos ese mes parcial
-    # y los conteos quedan artificialmente bajos. Detectamos la parcialidad
-    # comparando el conteo de filas del último mes contra el penúltimo: si
-    # el último tiene menos de 50%, lo consideramos parcial y usamos el
-    # penúltimo como "último mes completo".
+    # Se usa para el %Pon (ponderada) = PDV con venta último mes / PDV presencia.
+    #
+    # Detección parcialidad: miramos el último DIA disponible del SAP en el
+    # último mes. Si el día es menor a (días_del_mes - 2), el mes es parcial
+    # y usamos el penúltimo como "último mes completo".
+    # (Antes usábamos conteo de filas, pero con SAP acumulando muchos días
+    #  ese ratio se acercaba a 1 y daba falso "completo".)
+    import calendar as _calendar
+    import re as _re_mod
     mes_ult_completo = None
     venta_ult_mes_por_prod = {}
     if "MES" in df_farm_todos.columns and "POS" in df_farm_todos.columns:
         meses_ord = sorted(df_farm_todos["MES"].dropna().unique())
         if meses_ord:
-            if len(meses_ord) >= 2:
-                rows_last = int((df_farm_todos["MES"] == meses_ord[-1]).sum())
-                rows_prev = int((df_farm_todos["MES"] == meses_ord[-2]).sum())
-                if rows_prev > 0 and rows_last < rows_prev * 0.5:
-                    mes_ult_completo = meses_ord[-2]
-                else:
-                    mes_ult_completo = meses_ord[-1]
-            else:
-                mes_ult_completo = meses_ord[-1]
+            mes_ult_completo = meses_ord[-1]  # default
+            if len(meses_ord) >= 2 and "DIA" in df_farm_todos.columns:
+                last = meses_ord[-1]
+                dias_last = df_farm_todos[df_farm_todos["MES"] == last]["DIA"].dropna().astype(str)
+                dias_norm = dias_last.str.replace(r"\D", "", regex=True)
+                dias_norm = dias_norm[dias_norm.str.len() >= 8]
+                if not dias_norm.empty:
+                    try:
+                        max_dia = dias_norm.max()
+                        day_num = int(max_dia[6:8])
+                        # días totales del mes (last es "YYYY-MM")
+                        try:
+                            y, m = str(last).split("-")
+                            dias_total = _calendar.monthrange(int(y), int(m))[1]
+                        except Exception:
+                            dias_total = 30
+                        if day_num < dias_total - 2:
+                            mes_ult_completo = meses_ord[-2]
+                    except Exception:
+                        pass
 
             df_ult_mes = df_farm_todos[
                 (df_farm_todos["MES"] == mes_ult_completo)
