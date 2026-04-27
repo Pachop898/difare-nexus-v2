@@ -204,12 +204,13 @@ def analisis_visibilidad(force: bool = False) -> dict:
         mask_mes = yyyymm_serie == mes_actual_yyyymm
         n_dias = int(sap_farm_total.loc[mask_mes, "DIA"].nunique())
         sap_farm = sap_farm_total[mask_mes].copy()
-        # SAP del mismo rango de días (1..dia_corte) del mes anterior
-        # Sirve para comparación temporal cuando todos los PDVs están en el plan.
+        # SAP del mismo rango de días del mes anterior (para temporal compare).
+        # Si SAP no tiene marzo (solo abril semanal), este será vacío y caemos
+        # al fallback con monthly Excel.
         if mes_anterior_yyyymm and dia_corte > 0:
             mask_mes_ant_rango = (yyyymm_serie == mes_anterior_yyyymm) & \
-                                 (dd_serie.fillna("00").astype(str).str.zfill(2) <= f"{dia_corte:02d}") & \
-                                 (dd_serie.str.len() == 2)
+                                 (dd_serie.str.len() == 2) & \
+                                 (dd_serie.str.zfill(2) <= f"{dia_corte:02d}")
             sap_mes_ant_rango = sap_farm_total[mask_mes_ant_rango].copy()
         else:
             sap_mes_ant_rango = pd.DataFrame()
@@ -217,6 +218,30 @@ def analisis_visibilidad(force: bool = False) -> dict:
         n_dias = int(sap_farm_total["DIA"].nunique())
         sap_farm = sap_farm_total
         sap_mes_ant_rango = pd.DataFrame()
+
+    # Fallback temporal: cargar venta del mes anterior desde df_todos (que
+    # incluye los Excel mensuales). Útil cuando SAP no trae el mes anterior.
+    # Se normaliza a "días corridos del mes actual" para apples-to-apples.
+    df_mes_anterior_normalizado = pd.DataFrame()
+    if mes_anterior_yyyymm and dia_corte > 0:
+        try:
+            from agente import analitica
+            d_cache = analitica.cargar_data()
+            df_todos = d_cache.get("df_todos")
+            if df_todos is not None and not df_todos.empty:
+                mes_ant_str_dash = f"{mes_anterior_yyyymm[:4]}-{mes_anterior_yyyymm[4:6]}"
+                df_ant = df_todos[
+                    (df_todos["UNIDAD"] == "FARMACIAS") &
+                    (df_todos["MES"].astype(str) == mes_ant_str_dash)
+                ].copy()
+                # Normalizar venta del mes anterior a "primeros N días"
+                # Asume distribución uniforme: venta_norm = venta_mes × (dia_corte / 30)
+                # Esto es estimación; el lift es indicativo.
+                if not df_ant.empty:
+                    df_ant["VENTA NETA RECUPERO"] = df_ant["VENTA NETA RECUPERO"] * (dia_corte / 30.0)
+                    df_mes_anterior_normalizado = df_ant
+        except Exception as _e:
+            print(f"[visibilidad] no se pudo cargar mes anterior desde df_todos: {_e}")
 
     # ── 1) Análisis POR ELEMENTO ──
     resultados_elementos = []
@@ -274,19 +299,36 @@ def analisis_visibilidad(force: bool = False) -> dict:
             venta_prom_sin = float(venta_sin_match.mean()) if len(venta_sin_match) > 0 else 0
             n_sin_usados = int(len(venta_sin_match))
             metodo = "spatial"
-        elif not sap_mes_ant_rango.empty:
-            # TEMPORAL: mismos CON, mes anterior, mismo rango de días
-            sap_skus_ant = sap_mes_ant_rango[sap_mes_ant_rango["IDNEPTUNO"].isin(skus_set)]
-            sap_con_ant = sap_skus_ant[sap_skus_ant["CODIGOPDV"].isin(pdv_con_elem)]
-            venta_con_ant = sap_con_ant.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
-            venta_con_ant_pos = venta_con_ant[venta_con_ant > 0]
-            venta_prom_sin = float(venta_con_ant_pos.mean()) if len(venta_con_ant_pos) > 0 else 0
-            n_sin_usados = int(len(venta_con_ant_pos))
-            metodo = "temporal"
         else:
-            venta_prom_sin = 0
-            n_sin_usados = 0
-            metodo = "none"
+            # TEMPORAL: mismos CON, mes anterior, primeros N días normalizado.
+            # Intenta primero con SAP (si tiene mes anterior); si no, usa los
+            # Excel mensuales vía df_todos normalizado por (dia_corte/30).
+            venta_con_ant_pos = pd.Series(dtype=float)
+            if not sap_mes_ant_rango.empty:
+                sap_skus_ant = sap_mes_ant_rango[sap_mes_ant_rango["IDNEPTUNO"].isin(skus_set)]
+                sap_con_ant = sap_skus_ant[sap_skus_ant["CODIGOPDV"].isin(pdv_con_elem)]
+                venta_con_ant = sap_con_ant.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+                venta_con_ant_pos = venta_con_ant[venta_con_ant > 0]
+            if len(venta_con_ant_pos) == 0 and not df_mes_anterior_normalizado.empty:
+                # Filtrar por SKUs y CODIGOPDV en df_todos del mes anterior
+                # IDNEPTUNO en monthly puede ser numérico — convertir a str
+                df_ant_skus = df_mes_anterior_normalizado.copy()
+                df_ant_skus["IDNEPTUNO"] = df_ant_skus["IDNEPTUNO"].astype(str).str.strip()
+                df_ant_skus = df_ant_skus[df_ant_skus["IDNEPTUNO"].isin(skus_set)]
+                if "CODIGOPDV" in df_ant_skus.columns:
+                    df_ant_skus["CODIGOPDV"] = df_ant_skus["CODIGOPDV"].astype(str).str.strip()
+                    df_ant_con = df_ant_skus[df_ant_skus["CODIGOPDV"].isin(pdv_con_elem)]
+                    venta_con_ant = df_ant_con.groupby("CODIGOPDV")["VENTA NETA RECUPERO"].sum()
+                    venta_con_ant_pos = venta_con_ant[venta_con_ant > 0]
+
+            if len(venta_con_ant_pos) > 0:
+                venta_prom_sin = float(venta_con_ant_pos.mean())
+                n_sin_usados = int(len(venta_con_ant_pos))
+                metodo = "temporal"
+            else:
+                venta_prom_sin = 0
+                n_sin_usados = 0
+                metodo = "none"
 
         # Lift %
         lift = round((venta_prom_con / venta_prom_sin - 1) * 100, 1) if venta_prom_sin > 0 else 0
