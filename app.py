@@ -944,17 +944,20 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <div class="flex items-center justify-between mb-3">
         <div>
           <h2 class="text-lg font-semibold section-title">Distribución Numérica</h2>
-          <p class="text-sm" style="color:var(--muted)">Canal Distribución · Clientes impactados por mes</p>
+          <p class="text-sm" style="color:var(--muted)">Canal Distribución · Establecimientos únicos atendidos por mes (1 RUC puede tener varios IDESTABLECIMIENTO)</p>
         </div>
       </div>
-      <div class="mb-3">
-        <select id="dist-marca-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;max-width:300px">
+      <div class="mb-3 flex gap-3 flex-wrap">
+        <select id="dist-marca-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:200px">
           <option value="">Todas las marcas</option>
+        </select>
+        <select id="dist-producto-filter" style="background:var(--navy);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;min-width:280px;max-width:400px">
+          <option value="">Todos los productos</option>
         </select>
       </div>
       <div class="flex items-baseline gap-3 mb-3">
         <div class="text-2xl font-semibold kpi-val" id="dist-total">—</div>
-        <div class="text-xs" style="color:var(--muted)" id="dist-sub">Clientes únicos (RUC) histórico</div>
+        <div class="text-xs" style="color:var(--muted)" id="dist-sub">Establecimientos únicos histórico</div>
       </div>
       <div class="relative" style="height:280px"><canvas id="chartDistNumerica"></canvas></div>
     </section>
@@ -2292,25 +2295,67 @@ async function cargarVisibilidad(){
   }catch(e){console.warn("visibilidad error:",e);}
 }
 
-// Distribución Numérica — carga reutilizable
+// Distribución Numérica — carga reutilizable con filtro marca + producto
 let _distFiltrosInit=false;
+window._distProductosPorMarca={};
+
+function _distQs(){
+  const m = document.getElementById("dist-marca-filter").value || "";
+  const p = document.getElementById("dist-producto-filter").value || "";
+  const params=[];
+  if(m) params.push("marca="+encodeURIComponent(m));
+  if(p) params.push("producto="+encodeURIComponent(p));
+  return params.length ? "?"+params.join("&") : "";
+}
+
+function _distActualizarProductos(){
+  // Cascada: si se selecciona marca, mostrar solo productos de esa marca
+  const marca = document.getElementById("dist-marca-filter").value || "";
+  const sel = document.getElementById("dist-producto-filter");
+  const valActual = sel.value;
+  const prods = marca && window._distProductosPorMarca[marca]
+    ? window._distProductosPorMarca[marca]
+    : (window._distProductosTodos || []);
+  // Limpiar y repoblar
+  sel.innerHTML = '<option value="">Todos los productos</option>';
+  prods.forEach(p=>{
+    const o = document.createElement("option");
+    o.value=p; o.textContent=p;
+    sel.appendChild(o);
+  });
+  // Restaurar selección si todavía aplica
+  if (valActual && prods.includes(valActual)) sel.value = valActual;
+}
+
 async function cargarDist(){
   try{
-    // Si hay una sola marca TP seleccionada, propagar al gráfico de Distribución.
+    // Sincronizar marca filter con TP si hay una sola seleccionada
     const tpMarcas=window._tpFiltroMarcas||[];
-    const marcaTP=tpMarcas.length===1?tpMarcas[0]:"";
-    const marca=marcaTP||document.getElementById("dist-marca-filter").value||"";
-    const d=await api("/api/dist-numerica-chart"+(marca?"?marca="+encodeURIComponent(marca):""),45000); if(!d) return;
-    if(d.error){return;}
-    // Poblar select de marcas solo la primera vez
-    if(!_distFiltrosInit){
+    if(tpMarcas.length===1){
       const sel=document.getElementById("dist-marca-filter");
+      if(sel && sel.value!==tpMarcas[0]) sel.value=tpMarcas[0];
+    }
+    const d=await api("/api/dist-numerica-chart"+_distQs(),45000); if(!d) return;
+    if(d.error){return;}
+    if(!_distFiltrosInit){
+      // Poblar marcas
+      const selM=document.getElementById("dist-marca-filter");
       (d.marcas_disponibles||[]).forEach(m=>{
-        const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);
+        const o=document.createElement("option");o.value=m;o.textContent=m;selM.appendChild(o);
       });
-      sel.addEventListener("change",async()=>{
-        // Si el usuario cambia el filtro local de dist, usarlo
-        const d2=await api("/api/dist-numerica-chart?marca="+encodeURIComponent(sel.value));
+      // Cachear productos
+      window._distProductosTodos = d.productos_disponibles || [];
+      window._distProductosPorMarca = d.productos_por_marca || {};
+      _distActualizarProductos();
+      // Listeners
+      selM.addEventListener("change", async()=>{
+        _distActualizarProductos();
+        const d2=await api("/api/dist-numerica-chart"+_distQs(),45000);
+        if(d2) renderDistChart(d2);
+      });
+      const selP=document.getElementById("dist-producto-filter");
+      selP.addEventListener("change", async()=>{
+        const d2=await api("/api/dist-numerica-chart"+_distQs(),45000);
         if(d2) renderDistChart(d2);
       });
       _distFiltrosInit=true;
@@ -2370,7 +2415,15 @@ async function _cargarDashboard(intento){
 let _distChart=null;
 function renderDistChart(d){
   document.getElementById("dist-total").textContent=(d.total_clientes||0).toLocaleString("es-EC");
-  const sub=d.marca_filtro?`Clientes que compraron ${d.marca_filtro}`:"Clientes únicos (RUC) histórico";
+  const filtros=[];
+  if(d.marca_filtro) filtros.push(d.marca_filtro);
+  if(d.producto_filtro){
+    const pf = Array.isArray(d.producto_filtro) ? d.producto_filtro.join(", ") : d.producto_filtro;
+    filtros.push(pf);
+  }
+  const colId = (d.cliente_col_usada||"IDESTABLECIMIENTO").toLowerCase();
+  const baseLabel = `Establecimientos únicos (${colId}) histórico`;
+  const sub = filtros.length ? `Clientes que compraron ${filtros.join(" · ")}` : baseLabel;
   document.getElementById("dist-sub").textContent=sub;
   const meses=d.resumen_meses||[];
   if(!meses.length)return;

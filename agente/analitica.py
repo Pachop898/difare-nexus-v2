@@ -1549,13 +1549,18 @@ def venta_por_canal_farmacia(marca: str | None = None,
 
 
 def distribucion_numerica(marca: str | None = None,
+                          producto=None,
                           top_n: int = 20) -> dict:
     """
     Analiza la distribución numérica del canal DISTRIBUCION DIFARE:
-    - Clientes únicos atendidos (por RUC) en cada mes
-    - Comparativa mensual: ¿cuántos clientes nuevos? ¿cuántos se perdieron?
-    - Penetración del portafolio TOP: ¿cuántos productos distintos compra cada cliente?
-    Si se pasa 'marca', filtra solo esa marca.
+    - Clientes únicos atendidos por mes (cuenta por IDESTABLECIMIENTO, no RUC,
+      porque un RUC puede agrupar varios PDVs físicos).
+    - Variación neta mes a mes (ganados vs perdidos).
+    - Penetración del portafolio TOP por cliente.
+
+    Filtros opcionales:
+      marca: substring case-insensitive o lista
+      producto: substring o lista de PRODUCTO exactos
     """
     d = cargar_data()
     df = d["df_todos"]
@@ -1564,43 +1569,73 @@ def distribucion_numerica(marca: str | None = None,
     if dist.empty:
         return {"error": "No hay datos de distribución"}
 
-    # Filtrar por marca si aplica
+    # Filtrar por marca si aplica (string substring O lista exacta)
     if marca:
-        dist = dist[dist["MARCA"].astype(str).str.contains(marca, case=False, na=False)]
+        if isinstance(marca, (list, tuple, set)):
+            marcas_set = set(str(m).strip() for m in marca if m)
+            if marcas_set:
+                dist = dist[dist["MARCA"].astype(str).isin(marcas_set)]
+        else:
+            dist = dist[dist["MARCA"].astype(str).str.contains(str(marca), case=False, na=False)]
         if dist.empty:
             return {"error": f"Marca no encontrada en distribución: {marca}"}
 
-    # Identificar columna RUC
-    ruc_col = "RUC" if "RUC" in dist.columns else "PROPIETARIO"
+    # Filtrar por producto (string substring O lista exacta)
+    if producto:
+        if isinstance(producto, (list, tuple, set)):
+            prods_set = set(str(p).strip() for p in producto if p)
+            if prods_set:
+                dist = dist[dist["PRODUCTO"].astype(str).isin(prods_set)]
+        else:
+            dist = dist[dist["PRODUCTO"].astype(str).str.contains(str(producto), case=False, na=False)]
+        if dist.empty:
+            return {"error": f"Producto no encontrado en distribución: {producto}"}
 
-    # Asegurar columna MES
+    # Identificador de cliente — preferimos IDESTABLECIMIENTO (PDV físico).
+    # Un RUC puede tener varios IDESTABLECIMIENTO (sucursales/locales), y
+    # contar por RUC subestima la distribución numérica real.
+    if "IDESTABLECIMIENTO" in dist.columns:
+        cliente_col = "IDESTABLECIMIENTO"
+    elif "ESTABLECIMIENTO" in dist.columns:
+        cliente_col = "ESTABLECIMIENTO"
+    elif "CODIGOPDV" in dist.columns:
+        cliente_col = "CODIGOPDV"
+    elif "RUC" in dist.columns:
+        cliente_col = "RUC"
+    else:
+        cliente_col = "PROPIETARIO"
+
+    # Para el agrupado de penetración necesitamos un nombre legible
+    nombre_col = "ESTABLECIMIENTO" if "ESTABLECIMIENTO" in dist.columns else \
+                 ("PROPIETARIO" if "PROPIETARIO" in dist.columns else cliente_col)
+
     if "MES" not in dist.columns:
         return {"error": "No hay columna MES en los datos"}
 
     meses = sorted(dist["MES"].dropna().unique().tolist())
 
-    # Clientes por mes
+    # Clientes por mes (= establecimientos únicos)
     clientes_por_mes = {}
     for mes in meses:
         mes_data = dist[dist["MES"] == mes]
-        rucs = set(mes_data[ruc_col].dropna().unique())
-        clientes_por_mes[mes] = rucs
+        ids = set(mes_data[cliente_col].dropna().unique())
+        clientes_por_mes[mes] = ids
 
     # Construir resumen mensual
     resumen_meses = []
-    prev_rucs = set()
+    prev_ids = set()
     for mes in meses:
-        rucs = clientes_por_mes[mes]
-        nuevos = rucs - prev_rucs if prev_rucs else set()
-        perdidos = prev_rucs - rucs if prev_rucs else set()
+        ids = clientes_por_mes[mes]
+        nuevos = ids - prev_ids if prev_ids else set()
+        perdidos = prev_ids - ids if prev_ids else set()
         resumen_meses.append({
             "mes": mes,
-            "clientes_atendidos": len(rucs),
+            "clientes_atendidos": len(ids),
             "clientes_nuevos": len(nuevos),
             "clientes_perdidos": len(perdidos),
             "variacion_neta": len(nuevos) - len(perdidos),
         })
-        prev_rucs = rucs
+        prev_ids = ids
 
     # Portafolio TOP: productos Pareto (80% de venta)
     venta_prod = (dist.groupby("PRODUCTO")["VENTA NETA RECUPERO"].sum()
@@ -1614,12 +1649,16 @@ def distribucion_numerica(marca: str | None = None,
     else:
         productos_top = []
 
-    # Penetración del portafolio TOP por cliente (último mes)
+    # Penetración del portafolio TOP por cliente (último mes) — agrupado por
+    # cliente_col + nombre_col (si son distintos) para mostrar el establecimiento
     ultimo_mes = meses[-1] if meses else None
     penetracion = []
     if ultimo_mes and productos_top:
         ult = dist[(dist["MES"] == ultimo_mes)]
-        por_cliente = (ult.groupby([ruc_col, "PROPIETARIO"])
+        group_cols = [cliente_col]
+        if nombre_col != cliente_col and nombre_col in ult.columns:
+            group_cols.append(nombre_col)
+        por_cliente = (ult.groupby(group_cols)
                          .agg(
                              productos_comprados=("PRODUCTO", "nunique"),
                              productos_top_comprados=("PRODUCTO", lambda x: len(set(x) & set(productos_top))),
@@ -1632,14 +1671,16 @@ def distribucion_numerica(marca: str | None = None,
         ).round(1)
         penetracion = por_cliente.head(top_n).to_dict(orient="records")
 
-    # Universo total de clientes (histórico)
-    todos_rucs = set()
-    for rucs in clientes_por_mes.values():
-        todos_rucs |= rucs
+    # Universo total de clientes únicos (histórico)
+    todos_ids = set()
+    for ids in clientes_por_mes.values():
+        todos_ids |= ids
 
     return {
         "marca_filtro": marca,
-        "total_clientes_historico": len(todos_rucs),
+        "producto_filtro": producto,
+        "cliente_col_usada": cliente_col,
+        "total_clientes_historico": len(todos_ids),
         "productos_top_count": len(productos_top),
         "productos_top": productos_top[:15],  # primeros 15 para contexto
         "resumen_meses": resumen_meses,

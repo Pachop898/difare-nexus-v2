@@ -424,18 +424,37 @@ def dist_numerica_chart():
     auth, err = _autorizar()
     if err: return err
     marca = request.args.get("marca", "").strip() or None
+    productos_list = [p.strip() for p in request.args.getlist("producto") if p and p.strip()]
+    producto = productos_list if productos_list else None
     try:
-        data = analitica.distribucion_numerica(marca=marca, top_n=0)
-        # También devolver lista de marcas disponibles para el filtro
+        data = analitica.distribucion_numerica(marca=marca, producto=producto, top_n=0)
+        # Devolver listas de filtros disponibles + mapeo marca→productos
         d = analitica.cargar_data()
         df = d["df_todos"]
         dist = df[df["UNIDAD"] == "DISTRIBUCION DIFARE"]
         marcas = sorted(dist["MARCA"].dropna().unique().tolist()) if not dist.empty else []
+        # Productos disponibles (filtrados por marca si se pasó)
+        if not dist.empty and marca:
+            dist_m = dist[dist["MARCA"].astype(str).str.contains(str(marca), case=False, na=False)]
+            productos_disp = sorted(dist_m["PRODUCTO"].dropna().unique().tolist())
+        else:
+            productos_disp = sorted(dist["PRODUCTO"].dropna().unique().tolist()) if not dist.empty else []
+        # Mapeo marca → productos para cascada en frontend
+        productos_por_marca = {}
+        if not dist.empty:
+            for m in marcas:
+                prods = sorted(dist[dist["MARCA"] == m]["PRODUCTO"].dropna().unique().tolist())
+                if prods:
+                    productos_por_marca[m] = prods
         return jsonify({
             "resumen_meses": data.get("resumen_meses", []),
             "total_clientes": data.get("total_clientes_historico", 0),
+            "cliente_col_usada": data.get("cliente_col_usada", ""),
             "marcas_disponibles": marcas,
+            "productos_disponibles": productos_disp,
+            "productos_por_marca": productos_por_marca,
             "marca_filtro": marca,
+            "producto_filtro": producto,
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
