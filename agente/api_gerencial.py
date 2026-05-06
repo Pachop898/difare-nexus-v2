@@ -689,11 +689,17 @@ VOCABULARIO CLAVE DEL USUARIO:
   PDVs sin stock, y recomienda cuáles priorizar.
 
 - "Distribución numérica" = se refiere al CANAL DISTRIBUTIVO (DISTRIBUCION DIFARE).
-  Significa analizar cuántos clientes (por RUC) se han atendido, cuántos son nuevos vs perdidos
-  mes a mes, y si cada cliente está comprando el portafolio TOP completo.
-  Si el usuario pregunta por distribución numérica, primero PREGUNTA si se refiere al canal
-  distributivo o a farmacias. Si confirma distributivo, usa la herramienta distribucion_numerica.
-  Lo mínimo esperado es que cada cliente con RUC compre el portafolio TOP cada mes.
+  Significa analizar cuántos clientes (por IDESTABLECIMIENTO, no RUC, porque un RUC puede tener
+  varios PDVs) se han atendido, cuántos son nuevos vs perdidos mes a mes, y si cada cliente
+  está comprando el portafolio TOP completo. Usa la herramienta distribucion_numerica.
+
+- VENTA MENSUAL DE UN CLIENTE ESPECÍFICO DEL CANAL DISTRIBUCIÓN: si el usuario pregunta por la
+  evolución mensual de UN cliente concreto (ej: "dame venta mes a mes de Comfarmalsa", "cómo va
+  Cruz Verde", "venta de Sana Sana en abril"), usa la herramienta `venta_cliente_distribucion_mensual`
+  con cliente_query = nombre o RUC. NO uses distribucion_numerica para esto, que solo da el
+  agregado del canal. La herramienta busca el cliente por substring y devuelve su venta mensual
+  + top SKUs con desglose por mes. Si la búsqueda es ambigua, devuelve lista de candidatos para
+  que el usuario refine.
 """
 
 _TOOLS_GERENCIAL = [
@@ -852,7 +858,7 @@ _TOOLS_GERENCIAL = [
     },
     {
         "name": "distribucion_numerica",
-        "description": "Análisis de distribución numérica del canal DISTRIBUTIVO (DISTRIBUCION DIFARE): clientes atendidos por RUC mes a mes, clientes nuevos vs perdidos, y penetración del portafolio TOP. Usa esta herramienta cuando el usuario pregunta por 'distribución numérica', 'clientes atendidos', 'cuántos RUCs compraron', o 'penetración del portafolio'.",
+        "description": "Análisis de distribución numérica del canal DISTRIBUTIVO (DISTRIBUCION DIFARE): clientes atendidos por IDESTABLECIMIENTO mes a mes, clientes nuevos vs perdidos, y penetración del portafolio TOP. Usa esta herramienta cuando el usuario pregunta por 'distribución numérica', 'clientes atendidos', 'cuántos clientes compraron', o 'penetración del portafolio'.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -867,6 +873,33 @@ _TOOLS_GERENCIAL = [
                 }
             },
             "required": []
+        }
+    },
+    {
+        "name": "venta_cliente_distribucion_mensual",
+        "description": "Desglose mes a mes de la venta de un CLIENTE ESPECÍFICO del canal DISTRIBUCION DIFARE. Úsala cuando el usuario pregunte por la venta histórica de un cliente concreto (ej: 'dame venta mes a mes de Comfarmalsa', 'cómo va Cruz Verde mes a mes', 'venta de farmacias Sana Sana en abril'). El cliente se busca por nombre, RUC o IDESTABLECIMIENTO. Si la búsqueda es ambigua (varios clientes coinciden), devuelve lista de candidatos para que el usuario elija. Devuelve venta total por mes + top 10 SKUs con desglose mensual.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cliente_query": {
+                    "type": "string",
+                    "description": "Nombre, RUC, IDESTABLECIMIENTO o substring del cliente a buscar (ej: 'Comfarmalsa', 'Sana Sana', '0992345678'). Búsqueda case-insensitive, busca en nombre, propietario, RUC y código."
+                },
+                "marca": {
+                    "type": "string",
+                    "description": "Filtro opcional por marca (substring case-insensitive). Si no se pasa, considera todas las marcas."
+                },
+                "producto": {
+                    "type": "string",
+                    "description": "Filtro opcional por producto específico (substring). Para ver venta mensual de un solo SKU."
+                },
+                "top_skus": {
+                    "type": "integer",
+                    "description": "Cantidad de SKUs top a desglosar mensualmente. Default: 10.",
+                    "default": 10
+                }
+            },
+            "required": ["cliente_query"]
         }
     },
 ]
@@ -960,6 +993,15 @@ def _ejecutar_tool(name: str, inp: dict) -> str:
             data = analitica.distribucion_numerica(
                 marca=inp.get("marca") or None,
                 top_n=inp.get("top_n", 20)
+            )
+            return json.dumps(data, default=str, ensure_ascii=False)
+
+        elif name == "venta_cliente_distribucion_mensual":
+            data = analitica.venta_cliente_distribucion_mensual(
+                cliente_query=inp.get("cliente_query", ""),
+                marca=inp.get("marca") or None,
+                producto=inp.get("producto") or None,
+                top_skus=inp.get("top_skus", 10),
             )
             return json.dumps(data, default=str, ensure_ascii=False)
 

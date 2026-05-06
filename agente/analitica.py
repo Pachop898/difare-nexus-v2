@@ -1686,3 +1686,164 @@ def distribucion_numerica(marca: str | None = None,
         "resumen_meses": resumen_meses,
         "penetracion_portafolio_ultimo_mes": penetracion,
     }
+
+
+# ══════════════════════════════════════════════════════════════
+# Venta mensual por cliente del Canal Distribución
+# ══════════════════════════════════════════════════════════════
+
+def venta_cliente_distribucion_mensual(cliente_query: str,
+                                       marca=None,
+                                       producto=None,
+                                       top_skus: int = 10) -> dict:
+    """Desglose mes a mes de un cliente específico del canal DISTRIBUCION DIFARE.
+
+    cliente_query: nombre, RUC, IDESTABLECIMIENTO o substring (case-insensitive).
+    marca / producto: filtros opcionales (string substring o lista).
+    top_skus: cuántos SKUs top devolver con su venta mensual.
+
+    Retorna:
+      - matches: lista de candidatos si la búsqueda fue ambigua
+      - cliente: datos identificadores del cliente seleccionado
+      - venta_mensual: {mes: {venta, n_facturas, productos_distintos}}
+      - top_skus: lista de SKUs con venta mensual desglosada
+      - totales: ventaTotal, productosUnicos, mesesActivos
+    """
+    if not cliente_query or not str(cliente_query).strip():
+        return {"error": "cliente_query requerido"}
+    q = str(cliente_query).strip().lower()
+
+    d = cargar_data()
+    df = d["df_todos"]
+    dist = df[df["UNIDAD"] == "DISTRIBUCION DIFARE"].copy()
+    if dist.empty:
+        return {"error": "No hay datos de distribución"}
+
+    # Filtros marca/producto si aplican
+    if marca:
+        if isinstance(marca, (list, tuple, set)):
+            marcas_set = set(str(m).strip() for m in marca if m)
+            if marcas_set:
+                dist = dist[dist["MARCA"].astype(str).isin(marcas_set)]
+        else:
+            dist = dist[dist["MARCA"].astype(str).str.contains(str(marca), case=False, na=False)]
+    if producto:
+        if isinstance(producto, (list, tuple, set)):
+            prods_set = set(str(p).strip() for p in producto if p)
+            if prods_set:
+                dist = dist[dist["PRODUCTO"].astype(str).isin(prods_set)]
+        else:
+            dist = dist[dist["PRODUCTO"].astype(str).str.contains(str(producto), case=False, na=False)]
+    if dist.empty:
+        return {"error": "No hay datos con esos filtros"}
+
+    # Buscar cliente por substring en varias columnas (RUC, propietario, establecimiento, código)
+    columnas_busqueda = [c for c in ["RUC", "PROPIETARIO", "ESTABLECIMIENTO",
+                                      "IDESTABLECIMIENTO", "CODIGOPDV"]
+                          if c in dist.columns]
+    if not columnas_busqueda:
+        return {"error": "Columnas de búsqueda no disponibles"}
+
+    mask = pd.Series(False, index=dist.index)
+    for col in columnas_busqueda:
+        mask = mask | dist[col].astype(str).str.lower().str.contains(q, na=False, regex=False)
+    sub = dist[mask]
+    if sub.empty:
+        return {"error": f"Cliente no encontrado: {cliente_query}",
+                "sugerencia": "Probá con parte del nombre, RUC, o IDESTABLECIMIENTO."}
+
+    # Agrupar candidatos por IDESTABLECIMIENTO (o fallback) para detectar ambigüedad
+    id_col = "IDESTABLECIMIENTO" if "IDESTABLECIMIENTO" in sub.columns else \
+             ("CODIGOPDV" if "CODIGOPDV" in sub.columns else "RUC")
+    nombre_col = "ESTABLECIMIENTO" if "ESTABLECIMIENTO" in sub.columns else \
+                 ("PROPIETARIO" if "PROPIETARIO" in sub.columns else id_col)
+    grupo_col = "GRUPOPDV" if "GRUPOPDV" in sub.columns else None
+    ciudad_col = "CIUDAD" if "CIUDAD" in sub.columns else None
+
+    candidatos = (sub.groupby([id_col])
+                     .agg(
+                         nombre=(nombre_col, "first"),
+                         ruc=("RUC", "first") if "RUC" in sub.columns else (nombre_col, "first"),
+                         venta_total=("VENTA NETA RECUPERO", "sum"),
+                         meses_activos=("MES", "nunique"),
+                     )
+                     .reset_index()
+                     .sort_values("venta_total", ascending=False))
+
+    # Si hay múltiples candidatos con venta significativa, devolver lista
+    candidatos_top = candidatos.head(10)
+    if len(candidatos) > 1:
+        # Si el primer candidato tiene mucha más venta que los demás, usarlo;
+        # si todos son similares, devolver lista para que el usuario elija.
+        top = candidatos.iloc[0]
+        segundo = candidatos.iloc[1] if len(candidatos) > 1 else None
+        if segundo is not None and (segundo["venta_total"] / max(top["venta_total"], 1)) > 0.5:
+            # Ambiguo — devolver lista para que el usuario refine
+            return {
+                "matches": [
+                    {
+                        id_col.lower(): r[id_col],
+                        "nombre": str(r["nombre"]),
+                        "venta_total": round(float(r["venta_total"]), 2),
+                        "meses_activos": int(r["meses_activos"]),
+                    }
+                    for _, r in candidatos_top.iterrows()
+                ],
+                "mensaje": f"Encontré {len(candidatos)} clientes que coinciden con '{cliente_query}'. Refiná con un nombre o IDESTABLECIMIENTO específico.",
+            }
+
+    # Cliente seleccionado = el de mayor venta del match
+    cliente_id = candidatos.iloc[0][id_col]
+    sub_cliente = sub[sub[id_col] == cliente_id]
+
+    # Datos identificadores
+    primero = sub_cliente.iloc[0]
+    cliente_info = {
+        "id": str(cliente_id),
+        "nombre": str(primero.get(nombre_col, "")),
+        "ruc": str(primero["RUC"]) if "RUC" in primero else "",
+        "grupo": str(primero[grupo_col]) if grupo_col else "",
+        "ciudad": str(primero[ciudad_col]) if ciudad_col else "",
+    }
+
+    # Venta mensual del cliente
+    meses = sorted(sub_cliente["MES"].dropna().unique())
+    venta_mensual = []
+    for mes in meses:
+        sub_mes = sub_cliente[sub_cliente["MES"] == mes]
+        venta_mensual.append({
+            "mes": str(mes),
+            "venta": round(float(sub_mes["VENTA NETA RECUPERO"].sum()), 2),
+            "productos_distintos": int(sub_mes["PRODUCTO"].nunique()),
+            "unidades": int(sub_mes["UNIDADES_ROTADAS"].sum()) if "UNIDADES_ROTADAS" in sub_mes.columns else 0,
+        })
+
+    # Top SKUs del cliente con desglose mensual
+    top_prods_serie = (sub_cliente.groupby("PRODUCTO")["VENTA NETA RECUPERO"].sum()
+                                  .sort_values(ascending=False)
+                                  .head(top_skus))
+    top_skus_data = []
+    for prod, venta_t in top_prods_serie.items():
+        sub_prod = sub_cliente[sub_cliente["PRODUCTO"] == prod]
+        meses_prod = (sub_prod.groupby("MES")["VENTA NETA RECUPERO"].sum()
+                                .reindex(meses, fill_value=0))
+        top_skus_data.append({
+            "producto": str(prod),
+            "marca": str(sub_prod["MARCA"].iloc[0]) if "MARCA" in sub_prod.columns and not sub_prod.empty else "",
+            "venta_total": round(float(venta_t), 2),
+            "venta_por_mes": {str(m): round(float(v), 2) for m, v in meses_prod.items()},
+        })
+
+    venta_total = float(sub_cliente["VENTA NETA RECUPERO"].sum())
+    productos_unicos = int(sub_cliente["PRODUCTO"].nunique())
+
+    return {
+        "cliente": cliente_info,
+        "venta_mensual": venta_mensual,
+        "top_skus": top_skus_data,
+        "totales": {
+            "venta_total": round(venta_total, 2),
+            "productos_unicos": productos_unicos,
+            "meses_activos": len(meses),
+        },
+    }
