@@ -16,8 +16,16 @@ env/
 # Para re-habilitar el ETL auto en Railway, setea REGENERAR_DB_AUTO=1.
 api/data.db
 *.db
+*.db-journal
 *.sqlite
 *.sqlite3
+
+# Lockfiles de Excel/Office (transient, los crean al abrir el archivo)
+.~lock.*#
+~$*.xlsx
+~$*.docx
+~$*.pptx
+.~*
 
 # Documentos sincronizados por OneDrive (mover a docs/ en disco)
 docs/
