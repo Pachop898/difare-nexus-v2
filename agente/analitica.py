@@ -297,6 +297,27 @@ def kpis_dashboard(marca: str | None = None, canal: str | None = None,
     venta_dist = float(dist["VENTA NETA RECUPERO"].sum())
     venta_total = venta_farm + venta_dist
 
+    # Mes y año del último corte (derivado del MES máximo en df_todos sin filtrar
+    # — usar el df base de cache porque el filtrado puede excluir el mes en curso
+    # si no hay venta en los filtros aplicados).
+    df_base = d["df_todos"]
+    mes_nombre = ""
+    anio_actual = ""
+    if not df_base.empty and "MES" in df_base.columns:
+        meses_disp = sorted(df_base["MES"].dropna().astype(str).unique())
+        if meses_disp:
+            ultimo_mes = meses_disp[-1]  # ej "2026-05"
+            try:
+                y, m = ultimo_mes.split("-")
+                meses_es = ["enero","febrero","marzo","abril","mayo","junio",
+                            "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+                mes_idx = int(m) - 1
+                if 0 <= mes_idx < 12:
+                    mes_nombre = meses_es[mes_idx]
+                anio_actual = y
+            except Exception:
+                pass
+
     return {
         "venta_total": venta_total,
         "venta_farmacias": venta_farm,
@@ -305,6 +326,8 @@ def kpis_dashboard(marca: str | None = None, canal: str | None = None,
         "ultimo_dia_venta": d["ultimo_dia_venta"],
         "dias_mes": d["dias_mes"],
         "mes_completo": d["mes_completo"],
+        "mes_nombre": mes_nombre,
+        "anio_actual": anio_actual,
         "stock_por_mes": d["stock_por_mes"],
     }
 

@@ -1936,7 +1936,7 @@ async function cargarKPIs(){
     document.getElementById("kpi-univ").textContent=(d.universo_pdv||0).toLocaleString("es-EC");
     const periodo=d.mes_completo?`Mes completo · día ${d.ultimo_dia_venta}/${d.dias_mes}`:`Día ${d.ultimo_dia_venta}/${d.dias_mes}`;
     document.getElementById("kpi-periodo").textContent=periodo;
-    document.getElementById("kpi-total-sub").textContent=`Data hasta día ${d.ultimo_dia_venta} de abril`;
+    document.getElementById("kpi-total-sub").textContent=`Data hasta día ${d.ultimo_dia_venta} de ${d.mes_nombre||""}`.trim().replace(/\s+de\s*$/,"");
   }catch(e){mostrarError(e.message||e);}
 }
 
