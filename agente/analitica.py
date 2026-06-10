@@ -185,7 +185,7 @@ def cargar_data(force: bool = False) -> dict:
         try:
             sap_path = gp.detectar_archivo_sap(carpeta)
             if sap_path:
-                df_sap_cached = pd.read_excel(sap_path)
+                df_sap_cached = gp._leer_excel_hoja_correcta(sap_path)
         except Exception as e:
             print(f"[analitica] WARN: No se pudo pre-cachear SAP ({e}), se usará df_todos como fallback")
 

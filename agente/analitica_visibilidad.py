@@ -112,12 +112,15 @@ def _cargar_sap_df() -> pd.DataFrame:
             return cached.copy()
     except Exception:
         pass
-    # Fallback: leer del disco
+    # Fallback: leer del disco (usar helper que detecta hoja y normaliza columnas)
     carpeta = _carpeta_excels()
     sap_path = gp.detectar_archivo_sap(carpeta)
     if not sap_path:
         raise FileNotFoundError("No se encontró archivo SAP")
-    return pd.read_excel(sap_path)
+    df = gp._leer_excel_hoja_correcta(sap_path)
+    if df is None:
+        raise FileNotFoundError(f"No se pudo leer SAP: {sap_path}")
+    return df
 
 
 # ══════════════════════════════════════════════════════════════

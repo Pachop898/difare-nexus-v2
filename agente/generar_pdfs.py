@@ -81,7 +81,9 @@ def detectar_ultimo_dia_stock_y_venta(carpeta="excels"):
     if not sap:
         return 29, 29, 31, False
     try:
-        df = pd.read_excel(sap)
+        df = _leer_excel_hoja_correcta(sap)
+        if df is None:
+            return 29, 29, 31, False
         farm = df[df["UNIDAD"] == "FARMACIAS"]
         if "DIA" not in farm.columns:
             return 29, 29, 31, False
@@ -119,6 +121,45 @@ def detectar_ultimo_dia_y_proyeccion(carpeta="excels"):
     ultimo_dia_venta, _, dias_en_mes, es_completo = detectar_ultimo_dia_stock_y_venta(carpeta)
     return ultimo_dia_venta, dias_en_mes, es_completo
 
+def _leer_excel_hoja_correcta(path):
+    """Lee un Excel buscando la hoja que contenga FECHA o DIA (la data raw),
+    no la primera hoja por defecto. Útil cuando el archivo viene con hojas
+    extra (resúmenes, tablas pivote, etc.).
+    También normaliza COSTOVENTANETO → VENTA NETA RECUPERO porque a partir de
+    mayo 2026 Difare cambió el nombre de esa columna (mismo metric, etiqueta
+    distinta — confirmado con el equipo de cuenta)."""
+    nombre = os.path.basename(path)
+    try:
+        xl = pd.ExcelFile(path)
+        sheets = xl.sheet_names
+    except Exception as e:
+        print(f"[cargar_excel] {nombre}: no se pudo abrir ({e})")
+        return None
+
+    df = None
+    for sheet in sheets:
+        try:
+            tmp = pd.read_excel(path, sheet_name=sheet)
+            if "FECHA" in tmp.columns or "DIA" in tmp.columns:
+                df = tmp
+                if sheet != sheets[0]:
+                    print(f"[cargar_excel] {nombre}: usando hoja '{sheet}' (no la primera)")
+                break
+        except Exception as e:
+            print(f"[cargar_excel] {nombre} hoja '{sheet}': {e}")
+            continue
+
+    if df is None:
+        return None
+
+    # Normalizar nombre de columna de venta neta (Difare cambió desde mayo 2026)
+    if "VENTA NETA RECUPERO" not in df.columns and "COSTOVENTANETO" in df.columns:
+        df = df.rename(columns={"COSTOVENTANETO": "VENTA NETA RECUPERO"})
+        print(f"[cargar_excel] {nombre}: renombrado COSTOVENTANETO → VENTA NETA RECUPERO")
+
+    return df
+
+
 def cargar_todos_excels(carpeta="excels"):
     archivos = glob.glob(f"{carpeta}/*.xlsx") + glob.glob(f"{carpeta}/*.xls")
     dfs = []
@@ -130,7 +171,9 @@ def cargar_todos_excels(carpeta="excels"):
         if "PLAN" in nombre_upper or "VISIBILIDAD" in nombre_upper:
             continue
         try:
-            df = pd.read_excel(a)
+            df = _leer_excel_hoja_correcta(a)
+            if df is None:
+                continue
             # Solo procesar archivos con estructura de ventas (FECHA o DIA como columna)
             if "FECHA" not in df.columns and "DIA" not in df.columns:
                 continue
@@ -140,8 +183,8 @@ def cargar_todos_excels(carpeta="excels"):
             elif "DIA" in df.columns:
                 df["MES"] = df["DIA"].apply(parsear_mes)
             dfs.append(df)
-        except:
-            pass
+        except Exception as e:
+            print(f"[cargar_todos_excels] error con {a}: {e}")
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 def cargar_stock_por_mes(carpeta="excels"):
@@ -155,7 +198,9 @@ def cargar_stock_por_mes(carpeta="excels"):
         if "EJEMPLO" in nombre_upper or "PLAN" in nombre_upper or "VISIBILIDAD" in nombre_upper:
             continue
         try:
-            df = pd.read_excel(a)
+            df = _leer_excel_hoja_correcta(a)
+            if df is None:
+                continue
             if "FECHA" not in df.columns and "DIA" not in df.columns:
                 continue
             nombre = os.path.basename(a).upper()
@@ -200,7 +245,9 @@ def cargar_sap_completo(carpeta="excels"):
     sap = detectar_archivo_sap(carpeta)
     if not sap:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    df = pd.read_excel(sap)
+    df = _leer_excel_hoja_correcta(sap)
+    if df is None:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     farm_todo = df[df["UNIDAD"] == "FARMACIAS"].copy()
     bodega = df[df["UNIDAD"] == "DIFARE S.A."].copy()
     dia_stock = farm_todo.groupby("DIA")["STOCK"].sum()
@@ -218,7 +265,9 @@ def calcular_universo_pdv(carpeta="excels"):
     if not sap:
         return 0
     try:
-        df = pd.read_excel(sap)
+        df = _leer_excel_hoja_correcta(sap)
+        if df is None:
+            return 0
         farm = df[df["UNIDAD"] == "FARMACIAS"]
         universo = farm[
             (farm["VENTA NETA RECUPERO"] > 0) | (farm["STOCK"] > 0)
@@ -686,8 +735,8 @@ def generar_pdf_difare(df, ruta_salida, carpeta="excels"):
 
     # DOIS con venta proyectada del SAP
     sap_path = detectar_archivo_sap(carpeta)
-    if sap_path:
-        df_sap_raw = pd.read_excel(sap_path)
+    df_sap_raw = _leer_excel_hoja_correcta(sap_path) if sap_path else None
+    if df_sap_raw is not None:
         venta_sap_farm_dist = df_sap_raw[df_sap_raw["UNIDAD"].isin(["FARMACIAS","DISTRIBUCION DIFARE"])]["VENTA NETA RECUPERO"].sum()
         venta_sap_farm = df_sap_raw[df_sap_raw["UNIDAD"]=="FARMACIAS"]["VENTA NETA RECUPERO"].sum()
     else:
