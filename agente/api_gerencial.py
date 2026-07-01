@@ -355,7 +355,33 @@ def tienda_perfecta():
             _, ultimo_dia_stock, _, _ = gp.detectar_ultimo_dia_stock_y_venta()
         except Exception:
             ultimo_dia_stock = None
-        return jsonify({"filas": rows, "ultimo_dia_stock": ultimo_dia_stock}), 200
+        # Derivar nombre del mes del ÚLTIMO mes con datos en df_todos (no del
+        # navegador). Esto arregla el bug de "julio" cuando la data es de junio
+        # y el usuario abre el dashboard en julio.
+        mes_nombre = ""
+        anio_actual = ""
+        try:
+            d_cache = analitica.cargar_data()
+            df_base = d_cache.get("df_todos")
+            if df_base is not None and not df_base.empty and "MES" in df_base.columns:
+                meses_disp = sorted(df_base["MES"].dropna().astype(str).unique())
+                if meses_disp:
+                    ultimo_mes = meses_disp[-1]  # "YYYY-MM"
+                    y, m = ultimo_mes.split("-")
+                    meses_es = ["enero","febrero","marzo","abril","mayo","junio",
+                                "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+                    mi = int(m) - 1
+                    if 0 <= mi < 12:
+                        mes_nombre = meses_es[mi]
+                    anio_actual = y
+        except Exception:
+            pass
+        return jsonify({
+            "filas": rows,
+            "ultimo_dia_stock": ultimo_dia_stock,
+            "mes_nombre": mes_nombre,
+            "anio_actual": anio_actual,
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -2044,10 +2044,14 @@ async function cargarTP(){
     if(d.error){clearInterval(progTimer);mostrarError(d.error);return;}
     if(d.ultimo_dia_stock){
       const dia=d.ultimo_dia_stock;
-      const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-      const hoy=new Date();
-      const mesNombre=meses[hoy.getMonth()+1]||"abril";
-      const fechaTxt=`Stock al cierre del ${dia} de ${mesNombre} ${hoy.getFullYear()}`;
+      // Usar el mes/año que devuelve el backend (derivado de la data real),
+      // NO new Date() del navegador — sino cuando el usuario abre el
+      // dashboard en un mes posterior al de la data, aparece el mes equivocado.
+      const mesNombre = d.mes_nombre || "";
+      const anio = d.anio_actual || new Date().getFullYear();
+      const fechaTxt = mesNombre
+        ? `Stock al cierre del ${dia} de ${mesNombre} ${anio}`
+        : `Stock al cierre del día ${dia}`;
       const elSub=document.getElementById("tp-fecha-stock");
       if(elSub) elSub.textContent=fechaTxt;
       const elSubFull=document.getElementById("tp-fecha-stock-full");
@@ -2259,13 +2263,15 @@ async function cargarVisibilidad(){
     liftEl.style.color=lift>0?"#10b981":lift<0?"#ef4444":"var(--white)";
     document.getElementById("vis-k-cob").textContent=(k.cobertura_pct||0)+"%";
     document.getElementById("vis-k-stock").textContent=(k.pdv_con_stock||0)+" / "+(k.total_pdv_plan||0);
-    // Fecha
+    // Fecha — usar mes/año del backend (derivado de la data real, no del navegador)
     if(k.ultimo_dia_stock){
-      const meses=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-      const hoy=new Date();
-      const mesNom=meses[hoy.getMonth()+1]||"abril";
-      const dias=k.n_dias||k.ultimo_dia_stock;
-      document.getElementById("vis-fecha").textContent="Venta acumulada "+dias+" días de "+mesNom+" · Stock al cierre del "+k.ultimo_dia_stock+" de "+mesNom+" "+hoy.getFullYear();
+      const mesNom = k.mes_nombre || "";
+      const anio = k.anio_actual || new Date().getFullYear();
+      const dias = k.n_dias || k.ultimo_dia_stock;
+      const txt = mesNom
+        ? `Venta acumulada ${dias} días de ${mesNom} · Stock al cierre del ${k.ultimo_dia_stock} de ${mesNom} ${anio}`
+        : `Stock al cierre del día ${k.ultimo_dia_stock}`;
+      document.getElementById("vis-fecha").textContent = txt;
     }
     // Tabla por elemento
     const elems=d.elementos||[];

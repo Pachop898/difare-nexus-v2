@@ -405,6 +405,20 @@ def analisis_visibilidad(force: bool = False) -> dict:
     elapsed = round(_time.time() - t0, 1)
     print(f"[visibilidad] Análisis completado en {elapsed}s — {total_pdv_plan} PDVs, {n_dias} días de venta")
 
+    # Nombre del mes del último día con stock (derivado del SAP, no del navegador)
+    mes_nombre_vis = ""
+    anio_vis = ""
+    if mes_actual_yyyymm and len(mes_actual_yyyymm) == 6:
+        meses_es = ["enero","febrero","marzo","abril","mayo","junio",
+                    "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+        try:
+            mi = int(mes_actual_yyyymm[4:6]) - 1
+            if 0 <= mi < 12:
+                mes_nombre_vis = meses_es[mi]
+            anio_vis = mes_actual_yyyymm[:4]
+        except Exception:
+            pass
+
     result = {
         "kpis": {
             "total_pdv_plan": total_pdv_plan,
@@ -418,6 +432,8 @@ def analisis_visibilidad(force: bool = False) -> dict:
             "pdv_sin_stock": total_pdv_plan - pdv_con_stock_global,
             "ultimo_dia_stock": dia_num,
             "n_dias": n_dias,
+            "mes_nombre": mes_nombre_vis,
+            "anio_actual": anio_vis,
         },
         "elementos": resultados_elementos,
     }
