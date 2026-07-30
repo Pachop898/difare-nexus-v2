@@ -926,15 +926,16 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               <th class="text-center px-2 py-2">%Cob</th>
               <th class="text-center px-2 py-2" title="PDVs con venta > 0 unidades en el último mes completo">#PDV<br>con Venta</th>
               <th class="text-center px-2 py-2" title="PDVs con venta en el último mes completo / PDVs con presencia">%Pon</th>
-              <th class="text-center px-2 py-2" style="color:#ef4444">#PDV<br>Stock=0</th>
-              <th class="text-center px-2 py-2" style="color:#3b82f6">#PDV<br>Stock≤2</th>
+              <th class="text-center px-2 py-2" style="color:#ef4444" title="PDVs con presencia del SKU y stock exactamente 0 en el corte">#PDV<br>Stock=0</th>
+              <th class="text-center px-2 py-2" style="color:#f59e0b" title="PDVs con 1 unidad o menos (incluye los de stock 0)">#PDV<br>Stock≤1</th>
+              <th class="text-center px-2 py-2" style="color:#3b82f6" title="PDVs con menos de 2 unidades; con exactamente 2 unidades NO se cuenta">#PDV<br>Stock&lt;2</th>
               <th class="text-center px-2 py-2" style="color:#f97316">DOI<br>≤20</th>
               <th class="text-center px-2 py-2" style="color:#eab308">DOI<br>20-30</th>
               <th class="text-center px-2 py-2" style="color:#22c55e">DOI<br>30-60</th>
               <th class="text-center px-2 py-2" style="color:#8b5cf6">DOI<br>&gt;60</th>
             </tr>
           </thead>
-          <tbody id="tp-body"><tr><td colspan="16" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
+          <tbody id="tp-body"><tr><td colspan="17" class="text-center py-6" style="color:var(--muted)">Cargando…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -2058,7 +2059,7 @@ async function cargarTP(){
       if(elSubFull) elSubFull.textContent=fechaTxt;
     }
     const filas=d.filas||[];
-    if(!filas.length){body.innerHTML='<tr><td colspan="16" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
+    if(!filas.length){body.innerHTML='<tr><td colspan="17" class="text-center py-6" style="color:var(--muted)">Sin datos</td></tr>';return;}
     body.innerHTML=filas.map(f=>{
       const v=f.VENTA||f.venta_total||0;
       const pct=(f.PCT||0).toFixed(1);
@@ -2068,8 +2069,10 @@ async function cargarTP(){
       const cob=f.cobertura_pct||0;
       const pdvVenta=f.PDV_VENTA_ULT_MES||0;
       const pon=f.ponderada_pct||0;
-      const s0=f.stock_solo_0||0;
-      const s2=f.stock_solo_2||0;
+      // Buckets acumulativos: Stock=0 ⊂ Stock<=1 ⊂ Stock<2
+      const s0=f.stock_0||0;          // stock exactamente 0
+      const s1=f.stock_lte1||0;       // 1 unidad o menos
+      const sl2=f.stock_lt2||0;       // menos de 2 (exactamente 2 NO cuenta)
       const d1=f.DOI_LE20||0;
       const d2=f.DOI_20_30||0;
       const d3=f.DOI_30_60||0;
@@ -2089,7 +2092,8 @@ async function cargarTP(){
         <td class="px-2 py-1.5 text-center" style="color:var(--white)">${pdvVenta}</td>
         <td class="px-2 py-1.5 text-center" style="color:${pon>=80?'#10b981':pon>=60?'#f59e0b':'#ef4444'}">${pon}%</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#ef4444">${s0||""}</td>
-        <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${s2||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#f59e0b">${s1||""}</td>
+        <td class="px-2 py-1.5 text-center" style="color:#3b82f6">${sl2||""}</td>
         <td class="px-2 py-1.5 text-center font-bold" style="color:#f97316">${d1||""}</td>
         <td class="px-2 py-1.5 text-center" style="color:#eab308">${d2||""}</td>
         <td class="px-2 py-1.5 text-center" style="color:#22c55e">${d3||""}</td>

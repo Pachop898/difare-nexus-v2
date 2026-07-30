@@ -167,15 +167,25 @@ def cargar_data(force: bool = False) -> dict:
         t0 = _time.time()
         df_todos = gp.cargar_todos_excels(carpeta)
         bodega, farm_stock_ult, farm_todo = gp.cargar_sap_completo(carpeta)
-        # Universo = PDVs farmacias con venta>0 O stock>0 en TODOS los meses
-        # Usar CODIGOPDV (código numérico único) para evitar duplicados por variación de nombre
-        df_farm_todos = df_todos[df_todos["UNIDAD"] == "FARMACIAS"] if not df_todos.empty else pd.DataFrame()
-        _id_col = "CODIGOPDV" if ("CODIGOPDV" in df_farm_todos.columns if not df_farm_todos.empty else False) else "POS"
-        if not df_farm_todos.empty and _id_col in df_farm_todos.columns:
-            _pv = set(df_farm_todos[df_farm_todos["VENTA NETA RECUPERO"] > 0][_id_col].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_todos.columns else set()
-            _ps = set(df_farm_todos[df_farm_todos["STOCK"] > 0][_id_col].dropna().unique()) if "STOCK" in df_farm_todos.columns else set()
-            universo = len(_pv | _ps) if (_pv or _ps) else gp.calcular_universo_pdv(carpeta)
-        else:
+        # ── Universo de PDV ──
+        # Se calcula SOLO sobre el SAP vigente (farm_todo), no sobre la unión
+        # de todos los Excel históricos.
+        #
+        # La versión anterior unía los PDV activos de TODOS los meses cargados
+        # en /excels. Al ser una unión acumulada nunca decrecía: una farmacia
+        # que cerró en febrero seguía contando en julio. Auditoría 2026-07:
+        # mostraba 1149 PDV cuando el universo real de julio era 1128 — 21
+        # tiendas cerradas inflando el denominador de %Cob.
+        #
+        # Se cuenta por CODIGOPDV (código único) y no por POS, porque el
+        # nombre del POS varía entre registros y duplica tiendas.
+        _id_col = "CODIGOPDV" if (not farm_todo.empty and "CODIGOPDV" in farm_todo.columns) else "POS"
+        universo = 0
+        if not farm_todo.empty and _id_col in farm_todo.columns:
+            _pv = set(farm_todo[farm_todo["VENTA NETA RECUPERO"] > 0][_id_col].dropna().unique()) if "VENTA NETA RECUPERO" in farm_todo.columns else set()
+            _ps = set(farm_todo[farm_todo["STOCK"] > 0][_id_col].dropna().unique()) if "STOCK" in farm_todo.columns else set()
+            universo = len(_pv | _ps)
+        if not universo:
             universo = gp.calcular_universo_pdv(carpeta)
         stock_por_mes = gp.cargar_stock_por_mes(carpeta)
         ultimo_dia, dias_mes, mes_completo = gp.detectar_ultimo_dia_y_proyeccion(carpeta)
@@ -788,20 +798,20 @@ _cache_pareto_grupo = {}   # {grupo_key: (rows, timestamp)}
 _CACHE_GRUPO_TTL = 300     # 5 minutos para grupo
 
 def _calcular_universo_grupo(d: dict, raw_vals: list, farm_todo_f) -> int:
-    """Calcula universo de PDVs para un grupo específico usando 3 meses."""
+    """Universo de PDV de un grupo, calculado SOLO sobre el SAP vigente.
+
+    farm_todo_f ya viene filtrado al grupo. Igual que el universo global, se
+    cuenta sobre el SAP y no sobre la unión histórica de df_todos: de lo
+    contrario las tiendas cerradas siguen inflando el denominador de %Cob."""
+    if farm_todo_f is None or farm_todo_f.empty:
+        return 0
     _id = "CODIGOPDV" if "CODIGOPDV" in farm_todo_f.columns else "POS"
-    codigos_grupo = set(farm_todo_f[_id].dropna().unique()) if not farm_todo_f.empty else set()
-    df_todos_all = d["df_todos"]
-    df_farm_all = df_todos_all[df_todos_all["UNIDAD"] == "FARMACIAS"]
-    if not df_farm_all.empty and _id in df_farm_all.columns:
-        mask_grupo = df_farm_all[_id].isin(codigos_grupo)
-        if "GRUPOPDV" in df_farm_all.columns:
-            mask_grupo = mask_grupo | df_farm_all["GRUPOPDV"].isin(raw_vals)
-        df_farm_grupo = df_farm_all[mask_grupo]
-        _pv = set(df_farm_grupo[df_farm_grupo["VENTA NETA RECUPERO"] > 0][_id].dropna().unique()) if "VENTA NETA RECUPERO" in df_farm_grupo.columns else set()
-        _ps = set(df_farm_grupo[df_farm_grupo["STOCK"] > 0][_id].dropna().unique()) if "STOCK" in df_farm_grupo.columns else set()
-        return len(_pv | _ps) if (_pv or _ps) else len(codigos_grupo)
-    return len(codigos_grupo)
+    if _id not in farm_todo_f.columns:
+        return 0
+    codigos_grupo = set(farm_todo_f[_id].dropna().unique())
+    _pv = set(farm_todo_f[farm_todo_f["VENTA NETA RECUPERO"] > 0][_id].dropna().unique()) if "VENTA NETA RECUPERO" in farm_todo_f.columns else set()
+    _ps = set(farm_todo_f[farm_todo_f["STOCK"] > 0][_id].dropna().unique()) if "STOCK" in farm_todo_f.columns else set()
+    return len(_pv | _ps) if (_pv or _ps) else len(codigos_grupo)
 
 
 def _calcular_doi_buckets(d: dict, rows: list, df_farm_src=None) -> list:
@@ -1326,12 +1336,15 @@ def exportar_vectorizacion_excel(producto: str | list = "", ruta_salida: str = "
             prod_farm = df_farm[df_farm["IDNEPTUNO"] == idneptuno] if not df_farm.empty else pd.DataFrame()
 
             pdv_con_presencia = set(prod_presencia_df["POS"].dropna().unique())
+            # Stock por PDV: SUMA de las filas de inventario del POS.
+            # prod_stock_df ya viene sin filas de venta (cargar_sap_completo
+            # aplica solo_filas_inventario), pero se suma igual porque un PDV
+            # puede traer más de una fila de inventario del mismo SKU. El
+            # bucle anterior asignaba el valor de la última fila leída y podía
+            # dejar en 0 a un PDV con inventario.
             pdv_stock_map = {}
             if not prod_stock_df.empty:
-                for _, sr in prod_stock_df.iterrows():
-                    pos = sr.get("POS")
-                    if pd.notna(pos):
-                        pdv_stock_map[pos] = sr.get("STOCK", 0) or 0
+                pdv_stock_map = gp.stock_por_pdv(prod_stock_df).to_dict()
 
             pdv_sin_vectorizar = universo_pdv - pdv_con_presencia
 

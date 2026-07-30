@@ -49,6 +49,61 @@ def parsear_fecha_completa(x):
     else:
         return pd.to_datetime(x, format="%Y%m%d", errors="coerce")
 
+
+# ══════════════════════════════════════════════════════════════
+# Filas de INVENTARIO vs filas de VENTA en el SAP
+# ══════════════════════════════════════════════════════════════
+# El SAP de Difare mezcla dos tipos de registro en la misma tabla y se
+# distinguen por la columna CANAL:
+#
+#   • Filas de INVENTARIO → CANAL = "<SIN>".  Solo existen para el día de
+#     corte.  STOCK > 0 siempre; UNIDADES_ROTADAS = 0.  Difare NO emite fila
+#     cuando el inventario es cero: la AUSENCIA de la fila ES el cero.
+#
+#   • Filas de VENTA → CANAL = "Mostrador", "CallCenter", "Pedidos Ya", etc.
+#     Existen todos los días.  STOCK = 0 SIEMPRE, por construcción: son
+#     registros de rotación, no de inventario.
+#
+# Leer la columna STOCK sobre las filas de venta produce falsos quiebres: un
+# PDV que VENDIÓ el día del corte aparece como "sin stock" aunque tenga
+# inventario. (Ver auditoría 2026-07: Nikzon reportaba 296 PDV en Stock=0
+# cuando los reales eran 5; los otros 291 eran PDV que vendieron ese día.)
+CANAL_INVENTARIO = "<SIN>"
+
+def solo_filas_inventario(df):
+    """Devuelve solo las filas de INVENTARIO del SAP, descartando las de venta.
+
+    Sin este filtro, cualquier conteo sobre la columna STOCK cuenta como
+    quiebre a los PDV que registraron una venta ese día."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    if "CANAL" in df.columns:
+        canal = df["CANAL"].astype(str).str.strip().str.upper()
+        inv = df[canal == CANAL_INVENTARIO]
+        if not inv.empty:
+            return inv.copy()
+    # Fallback defensivo por si Difare deja de usar "<SIN>" como etiqueta:
+    # descartar las filas que son claramente de rotación (venta > 0, stock 0).
+    if "UNIDADES_ROTADAS" in df.columns and "STOCK" in df.columns:
+        return df[~((df["UNIDADES_ROTADAS"].fillna(0) > 0)
+                    & (df["STOCK"].fillna(0) == 0))].copy()
+    return df
+
+
+def stock_por_pdv(df_stock, idneptuno=None):
+    """Serie STOCK total por POS a partir de las filas de inventario.
+
+    Suma por POS porque un mismo PDV puede traer más de una fila de
+    inventario para el mismo SKU."""
+    if df_stock is None or getattr(df_stock, "empty", True):
+        return pd.Series(dtype=float)
+    d = df_stock
+    if idneptuno is not None and "IDNEPTUNO" in d.columns:
+        d = d[d["IDNEPTUNO"] == idneptuno]
+    if d.empty or "POS" not in d.columns or "STOCK" not in d.columns:
+        return pd.Series(dtype=float)
+    return d.dropna(subset=["POS"]).groupby("POS")["STOCK"].sum()
+
 def detectar_archivo_sap(carpeta="excels"):
     archivos = glob.glob(f"{carpeta}/*.xlsx") + glob.glob(f"{carpeta}/*.xls")
     meses_nombres = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
@@ -257,10 +312,23 @@ def cargar_sap_completo(carpeta="excels"):
         farm_stock_ultimo = farm_todo[farm_todo["DIA"] == ultimo_dia_str].copy()
     else:
         farm_stock_ultimo = farm_todo.copy()
+    # Quedarse SOLO con las filas de inventario. Las filas de venta del mismo
+    # día traen STOCK = 0 por construcción y, si no se descartan, se cuentan
+    # como quiebres de stock inexistentes. Ver solo_filas_inventario().
+    farm_stock_ultimo = solo_filas_inventario(farm_stock_ultimo)
+    # bodega no se filtra: sus filas de venta traen STOCK/STOCK_VALORIZADO = 0
+    # y solo se usa para sumar valorizado, así que no distorsionan nada.
     return bodega, farm_stock_ultimo, farm_todo
 
 def calcular_universo_pdv(carpeta="excels"):
-    """Universo = PDV del SAP con venta>0 O stock>0"""
+    """Universo = PDV del SAP VIGENTE con venta>0 O stock>0.
+
+    Se cuenta por CODIGOPDV (código único) y NO por POS, porque el nombre del
+    POS varía entre registros y duplica tiendas.
+
+    Importante: el universo debe salir SOLO del SAP vigente. Si se acumulan
+    los Excel históricos, las tiendas cerradas siguen sumando para siempre
+    (auditoría 2026-07: 1149 acumulado ene–jul vs 1128 reales en julio)."""
     sap = detectar_archivo_sap(carpeta)
     if not sap:
         return 0
@@ -269,9 +337,10 @@ def calcular_universo_pdv(carpeta="excels"):
         if df is None:
             return 0
         farm = df[df["UNIDAD"] == "FARMACIAS"]
+        col = "CODIGOPDV" if "CODIGOPDV" in farm.columns else "POS"
         universo = farm[
             (farm["VENTA NETA RECUPERO"] > 0) | (farm["STOCK"] > 0)
-        ]["POS"].dropna().nunique()
+        ][col].dropna().nunique()
         return universo
     except:
         return 0
@@ -362,6 +431,7 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
         presencia = 0
         stock_eq0 = 0
         stock_leq1 = 0
+        stock_lt2 = 0
         stock_leq2 = 0
         stock_leq3 = 0
 
@@ -373,25 +443,27 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
         else:
             pdv_presencia = set()
 
-        # Stock del ultimo dia
+        # ── Stock del último día de corte ──
+        # df_sap_farm_stock ya viene filtrado a filas de INVENTARIO
+        # (cargar_sap_completo → solo_filas_inventario). Se suma el STOCK por
+        # POS antes de comparar, porque un PDV puede traer varias filas.
         if df_sap_farm_stock is not None and not df_sap_farm_stock.empty:
-            prod_stock = df_sap_farm_stock[df_sap_farm_stock["IDNEPTUNO"] == idneptuno]
-            pdv_en_ultimo_dia = set(prod_stock["POS"].dropna().unique())
+            stock_pos = stock_por_pdv(df_sap_farm_stock, idneptuno)
+            pdv_con_stock = set(stock_pos.index)
 
-            # PDV ausentes del ultimo dia = stock implicito 0
-            pdv_ausentes = pdv_presencia - pdv_en_ultimo_dia
+            # Difare no emite fila de inventario cuando el stock es cero:
+            # la ausencia de fila ES el cero. Se suman también los PDV que
+            # traen fila explícita en 0 por si el formato cambia.
+            pdv_ausentes = pdv_presencia - pdv_con_stock
+            pdv_cero_explicito = set(stock_pos[stock_pos <= 0].index)
+            pdv_stock0 = pdv_ausentes | pdv_cero_explicito
 
-            # Stock=0: en ultimo dia con stock=0 + ausentes
-            pdv_stock0 = set(prod_stock[prod_stock["STOCK"] == 0]["POS"].dropna().unique())
-            stock_eq0 = len(pdv_stock0 | pdv_ausentes)
-
-            # Stock<=N: en ultimo dia con stock<=N + ausentes
-            pdv_leq1 = set(prod_stock[prod_stock["STOCK"] <= 1]["POS"].dropna().unique())
-            pdv_leq2 = set(prod_stock[prod_stock["STOCK"] <= 2]["POS"].dropna().unique())
-            pdv_leq3 = set(prod_stock[prod_stock["STOCK"] <= 3]["POS"].dropna().unique())
-            stock_leq1 = len(pdv_leq1 | pdv_ausentes)
-            stock_leq2 = len(pdv_leq2 | pdv_ausentes)
-            stock_leq3 = len(pdv_leq3 | pdv_ausentes)
+            # Buckets ACUMULATIVOS: cada uno incluye a los PDV en cero.
+            stock_eq0 = len(pdv_stock0)
+            stock_leq1 = len(pdv_stock0 | set(stock_pos[stock_pos <= 1].index))
+            stock_lt2 = len(pdv_stock0 | set(stock_pos[stock_pos < 2].index))
+            stock_leq2 = len(pdv_stock0 | set(stock_pos[stock_pos <= 2].index))
+            stock_leq3 = len(pdv_stock0 | set(stock_pos[stock_pos <= 3].index))
 
         iddifare = row.get("IDDIFARE", "")
         # Convertir IDDIFARE a numérico si es posible (viene como texto)
@@ -417,10 +489,16 @@ def calcular_pareto_farmacias(df_todos, df_sap_farm_stock, df_sap_farm_todo, uni
             "PDV_VENTA_ULT_MES": pdv_venta_ult_mes,
             # MES viene como string "YYYY-MM" (p.ej. "2026-03"), no entero
             "MES_ULT_COMPLETO": str(mes_ult_completo) if mes_ult_completo is not None else None,
+            # STOCK_0    = PDV con stock exactamente 0
+            # STOCK_1    = PDV con 1 unidad o menos  (incluye los de 0)
+            # STOCK_LT2  = PDV con menos de 2 unidades — exactamente 2 NO cuenta
+            # STOCK_2/3  = <=2 y <=3, se mantienen para el PDF gerencial
             "STOCK_0": stock_eq0,
             "STOCK_1": stock_leq1,
+            "STOCK_LT2": stock_lt2,
             "STOCK_2": stock_leq2,
             "STOCK_3": stock_leq3,
+            "PDV_CON_STOCK": presencia - stock_eq0,
         })
     return pd.DataFrame(resultado)
 
@@ -880,7 +958,7 @@ def generar_pdf_difare(df, ruta_salida, carpeta="excels"):
     if not pareto_df.empty:
         pareto_data = [["ID NEP", "MARCA", "PRODUCTO", "VENTA", "PESO%", "ACUM%",
                         "UNIVERSO\nPDV", "PDV\nPRESENCIA", "%COBERTURA",
-                        "PDV con\nStock=0", "PDV con\nStock<=1", "PDV con\nStock<=2", "PDV con\nStock<=3"]]
+                        "PDV con\nStock=0", "PDV con\nStock<=1", "PDV con\nStock<2", "PDV con\nStock<=3"]]
         for _, r in pareto_df.iterrows():
             uni = int(r["UNIVERSO_PDV"]) if r["UNIVERSO_PDV"] else 0
             pres = int(r["PDV_PRESENCIA"])
@@ -897,7 +975,7 @@ def generar_pdf_difare(df, ruta_salida, carpeta="excels"):
                 f"{cobertura:.1f}%",
                 str(int(r["STOCK_0"])),
                 str(int(r["STOCK_1"])),
-                str(int(r["STOCK_2"])),
+                str(int(r.get("STOCK_LT2", r["STOCK_2"]))),
                 str(int(r["STOCK_3"])),
             ])
         col_w = [1.5*cm, 2.2*cm, 6.0*cm, 2.4*cm, 1.3*cm, 1.3*cm, 1.6*cm, 1.7*cm, 1.7*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm]

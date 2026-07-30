@@ -335,14 +335,23 @@ def tienda_perfecta():
         rows = analitica.oportunidad_vectorizacion(
             marca=marca, producto=productos if productos else None, grupo=grupos
         )
-        # Calcular buckets EXCLUSIVOS de stock
+        # ── Buckets de stock (ACUMULATIVOS) ──
+        # Antes se exponían buckets "exclusivos" (stock_solo_2 = s2 - s1), pero
+        # la cabecera del dashboard decía "Stock≤2" y mostraba en realidad
+        # "Stock exactamente 2". Ahora cada bucket se expone tal cual:
+        #   stock_0     → PDV con stock exactamente 0
+        #   stock_lte1  → PDV con 1 unidad o menos   (incluye los de 0)
+        #   stock_lt2   → PDV con menos de 2 unidades; con exactamente 2 NO cuenta
         for r in rows:
             s0 = r.get("STOCK_0", 0) or 0
             s1 = r.get("STOCK_1", 0) or 0
-            s2 = r.get("STOCK_2", 0) or 0
-            s3 = r.get("STOCK_3", 0) or 0
+            slt2 = r.get("STOCK_LT2", 0) or 0
+            r["stock_0"] = s0
+            r["stock_lte1"] = s1
+            r["stock_lt2"] = slt2
+            # Alias legacy para clientes que aún leen las claves viejas
             r["stock_solo_0"] = s0
-            r["stock_solo_2"] = max(s2 - s1, 0)
+            r["stock_solo_2"] = max((r.get("STOCK_2", 0) or 0) - s1, 0)
             uni = r.get("UNIVERSO_PDV", 0) or 1
             pres = r.get("PDV_PRESENCIA", 0) or 0
             r["cobertura_pct"] = round(pres / uni * 100, 1)
@@ -598,17 +607,18 @@ def reporte_pdf():
         pdf.cell(25, 7, "Venta", 1, 0, "C", True)
         pdf.cell(15, 7, "%Cob", 1, 0, "C", True)
         pdf.cell(20, 7, "Stock=0", 1, 0, "C", True)
-        pdf.cell(20, 7, "Stock=1", 1, 0, "C", True)
-        pdf.cell(20, 7, "Stock=2", 1, 1, "C", True)
+        pdf.cell(20, 7, "Stock<=1", 1, 0, "C", True)
+        pdf.cell(20, 7, "Stock<2", 1, 1, "C", True)
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(40, 40, 40)
         for r in tp[:15]:
             uni = r.get("UNIVERSO_PDV", 0) or 1
             pres = r.get("PDV_PRESENCIA", 0)
             cob = round(pres / uni * 100, 1)
-            s0 = r.get("STOCK_0", 0)
-            s1 = max((r.get("STOCK_1", 0) or 0) - (s0 or 0), 0)
-            s2 = max((r.get("STOCK_2", 0) or 0) - (r.get("STOCK_1", 0) or 0), 0)
+            # Buckets acumulativos, alineados con el dashboard
+            s0 = r.get("STOCK_0", 0) or 0
+            s1 = r.get("STOCK_1", 0) or 0
+            s2 = r.get("STOCK_LT2", r.get("STOCK_2", 0)) or 0
             pdf.cell(30, 6, _s(str(r.get("MARCA", ""))[:15]), 1, 0, "L")
             pdf.cell(55, 6, _s(str(r.get("PRODUCTO", ""))[:30]), 1, 0, "L")
             pdf.cell(25, 6, f"${r.get('VENTA', r.get('venta_total', 0)):,.0f}", 1, 0, "R")
