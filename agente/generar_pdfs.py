@@ -208,9 +208,19 @@ def _leer_excel_hoja_correcta(path):
         return None
 
     # Normalizar nombre de columna de venta neta (Difare cambió desde mayo 2026)
-    if "VENTA NETA RECUPERO" not in df.columns and "COSTOVENTANETO" in df.columns:
-        df = df.rename(columns={"COSTOVENTANETO": "VENTA NETA RECUPERO"})
-        print(f"[cargar_excel] {nombre}: renombrado COSTOVENTANETO → VENTA NETA RECUPERO")
+    # Difare ha cambiado 3 veces el nombre de la columna de venta a lo largo
+    # del año. Normalizamos todo a 'VENTA NETA RECUPERO' (nombre canónico
+    # original) para que el resto del sistema funcione sin cambios.
+    #   ene-abril 2026: VENTA NETA RECUPERO (original)
+    #   may-jul 2026 (v1): COSTOVENTANETO (era costo, no venta — corregido)
+    #   may-jul 2026 (v2) + ago 2026: 'VENTA NETA' (venta neta real)
+    if "VENTA NETA RECUPERO" not in df.columns:
+        if "COSTOVENTANETO" in df.columns:
+            df = df.rename(columns={"COSTOVENTANETO": "VENTA NETA RECUPERO"})
+            print(f"[cargar_excel] {nombre}: renombrado COSTOVENTANETO → VENTA NETA RECUPERO")
+        elif "VENTA NETA" in df.columns:
+            df = df.rename(columns={"VENTA NETA": "VENTA NETA RECUPERO"})
+            print(f"[cargar_excel] {nombre}: renombrado 'VENTA NETA' → VENTA NETA RECUPERO")
 
     return df
 
